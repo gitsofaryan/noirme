@@ -218,6 +218,31 @@ function matchesFilter(intent: any, key: string): boolean {
   return true;
 }
 
+async function getIPLocation(): Promise<{ lat: number; lng: number }> {
+  try {
+    const res = await fetch("https://ipapi.co/json/");
+    if (!res.ok) throw new Error("ipapi failed");
+    const data = await res.json();
+    if (data.latitude && data.longitude) {
+      return { lat: data.latitude, lng: data.longitude };
+    }
+    throw new Error("Invalid lat/lng");
+  } catch (e) {
+    try {
+      const res = await fetch("https://ipinfo.io/json");
+      if (!res.ok) throw new Error("ipinfo failed");
+      const data = await res.json();
+      if (data.loc) {
+        const [latStr, lngStr] = data.loc.split(",");
+        return { lat: parseFloat(latStr), lng: parseFloat(lngStr) };
+      }
+    } catch (err) {
+      console.warn("All IP Geo failed", err);
+    }
+    throw new Error("IP geolocation failed completely");
+  }
+}
+
 export default function LiveMap() {
   const { isSignedIn, user, profile, isLoading } = useAuth();
 
@@ -254,14 +279,33 @@ export default function LiveMap() {
   const myAvatarUrl =
     profile?.avatar_url || (user ? getAvatarUrl(user.username) : getAvatarUrl("anon"));
 
-  // — Get location
+  // — Get location with race (IP location + high-accuracy geolocation fallback)
   useEffect(() => {
+    let finished = false;
+
+    // Fast IP Geolocation fallback so map is never collapsed
+    getIPLocation()
+      .then((ipLoc) => {
+        if (!finished) {
+          const offset = maskLocation ? 0.0018 : 0;
+          setLocation({
+            lat: ipLoc.lat + (Math.random() - 0.5) * offset,
+            lng: ipLoc.lng + (Math.random() - 0.5) * offset,
+          });
+          setLocStatus("granted");
+        }
+      })
+      .catch((err) => {
+        console.warn("IP Geolocation mount error:", err);
+      });
+
     if (!navigator.geolocation) {
-      setLocStatus("denied");
       return;
     }
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        finished = true;
         const offset = maskLocation ? 0.0018 : 0;
         setLocation({
           lat: pos.coords.latitude + (Math.random() - 0.5) * offset,
@@ -270,9 +314,11 @@ export default function LiveMap() {
         setLocStatus("granted");
       },
       () => {
-        setLocStatus("denied");
+        finished = true;
+        // Don't override if IP geolocation already succeeded
+        setLocStatus((prev) => (prev === "granted" ? "granted" : "denied"));
       },
-      { enableHighAccuracy: false, timeout: 7000, maximumAge: 30000 }
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 30000 }
     );
   }, [maskLocation]);
 
@@ -438,6 +484,27 @@ export default function LiveMap() {
     maskLocation,
   ]);
 
+  // Send location update to WebSocket server whenever location coordinates change
+  useEffect(() => {
+    const ws = socketRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN && location) {
+      const finalAnonId = typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : "anon";
+      const userId = user?.id || user?.username || finalAnonId || "anon";
+      ws.send(
+        JSON.stringify({
+          type: "location_update",
+          user_id: userId,
+          username: handle,
+          vibeEmoji: vibeEmoji,
+          avatar_url: myAvatarUrl,
+          lat: location.lat,
+          lng: location.lng,
+        })
+      );
+      ws.send(JSON.stringify({ type: "request_sync" }));
+    }
+  }, [location?.lat, location?.lng, socketReady, handle, vibeEmoji, myAvatarUrl]);
+
   const postIntent = () => {
     const ws = socketRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !intentText.trim() || !location) return;
@@ -536,10 +603,28 @@ export default function LiveMap() {
     // 1. Recenter map
     setRecenterTrigger((t) => t + 1);
 
-    // 2. Fetch latest geolocation and update coordinate on socket server
+    let finished = false;
+
+    // 2. Fetch fast IP location
+    getIPLocation()
+      .then((ipLoc) => {
+        if (!finished) {
+          const offset = maskLocation ? 0.0018 : 0;
+          const newCoords = {
+            lat: ipLoc.lat + (Math.random() - 0.5) * offset,
+            lng: ipLoc.lng + (Math.random() - 0.5) * offset,
+          };
+          setLocation(newCoords);
+          setLocStatus("granted");
+        }
+      })
+      .catch((err) => console.warn("IP location error on refresh:", err));
+
+    // 3. Fetch browser location
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          finished = true;
           const offset = maskLocation ? 0.0018 : 0;
           const newCoords = {
             lat: pos.coords.latitude + (Math.random() - 0.5) * offset,
@@ -547,38 +632,24 @@ export default function LiveMap() {
           };
           setLocation(newCoords);
           setLocStatus("granted");
-
-          const ws = socketRef.current;
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            const userId =
-              user?.id ||
-              user?.username ||
-              (typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : null) ||
-              "anon";
-            ws.send(
-              JSON.stringify({
-                type: "location_update",
-                user_id: userId,
-                username: handle,
-                vibeEmoji: vibeEmoji,
-                avatar_url: myAvatarUrl,
-                lat: newCoords.lat,
-                lng: newCoords.lng,
-              })
-            );
-          }
         },
         () => {
-          setLocStatus("denied");
+          finished = true;
+          // If browser geo failed or permission denied, request sync anyway using current location
+          const ws = socketRef.current;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "request_sync" }));
+          }
         },
         { enableHighAccuracy: false, timeout: 5000, maximumAge: 10000 }
       );
-    }
-
-    // 3. Request fresh sync from socket server
-    const ws = socketRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "request_sync" }));
+    } else {
+      finished = true;
+      // Request sync anyway
+      const ws = socketRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "request_sync" }));
+      }
     }
   };
 
