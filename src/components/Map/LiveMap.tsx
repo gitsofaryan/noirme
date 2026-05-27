@@ -280,7 +280,26 @@ async function getIPLocation(): Promise<{ lat: number; lng: number }> {
 }
 
 export default function LiveMap() {
-  const { isSignedIn, user, profile, isLoading } = useAuth();
+  const { isSignedIn, user, profile, isLoading, blockUser } = useAuth();
+
+  const myUserId =
+    user?.id ||
+    user?.username ||
+    (typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : null) ||
+    "anon";
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [hasWaved, setHasWaved] = useState(false);
+  const [confirmBlock, setConfirmBlock] = useState(false);
+
+  useEffect(() => {
+    setHasWaved(false);
+    setConfirmBlock(false);
+  }, [selectedUser]);
+
+  const handleBlock = async (userId: string) => {
+    await blockUser(userId);
+    setSelectedUser(null);
+  };
   const locationOffsetRef = useRef<{ latOffset: number; lngOffset: number } | null>(null);
   
   const getStableOffset = () => {
@@ -343,6 +362,32 @@ export default function LiveMap() {
       _setSelectedHotspot(val);
     }
   };
+
+  // Sync selected user drawer with real-time active users updates
+  // NOTE: Only depend on activeUsers — use a ref for selectedUser to avoid infinite loop
+  const selectedUserRef = useRef<any>(null);
+  selectedUserRef.current = selectedUser;
+  useEffect(() => {
+    const current = selectedUserRef.current;
+    if (!current) return;
+    const latest = activeUsers.find((u) => u.user_id === current.user_id);
+    if (latest) {
+      // Only update if data actually changed
+      if (
+        latest.age !== current.age ||
+        latest.gender !== current.gender ||
+        latest.bio !== current.bio ||
+        latest.vibeEmoji !== current.vibeEmoji ||
+        latest.avatar_url !== current.avatar_url ||
+        latest.username !== current.username ||
+        JSON.stringify(latest.selectedTags) !== JSON.stringify(current.selectedTags)
+      ) {
+        setSelectedUser(latest);
+      }
+    } else {
+      setSelectedUser(null);
+    }
+  }, [activeUsers]);
 
   const maskLocation = profile?.maskLocation ?? true;
   const vibeEmoji = profile?.vibeEmoji ?? "☕";
@@ -415,9 +460,9 @@ export default function LiveMap() {
     };
   }, [maskLocation]);
 
-  // ── WebSocket: connect on mount, no location required to start ─────────────
+  // ── WebSocket: connect once, stay connected ─────────────────────────────────
+  // Only reconnect when identity changes (user login/logout), NOT on profile edits
   useEffect(() => {
-    // Start connecting immediately — location is sent once available
     if (!location) return;
 
     let mounted = true;
@@ -431,15 +476,7 @@ export default function LiveMap() {
       localStorage.setItem("noirme_anon_id", anonId!);
     }
     const finalAnonId = anonId || "anon";
-
-    // Snapshot identity at connection time (no stale closures)
     const userId = user?.id || user?.username || finalAnonId;
-    const uHandle = profile?.handle || user?.username || "Anon";
-    const uEmoji = profile?.vibeEmoji || "☕";
-    const uAvatar =
-      profile?.avatar_url || (user ? getAvatarUrl(user.username) : getAvatarUrl(finalAnonId));
-    const uLat = location.lat;
-    const uLng = location.lng;
 
     const connect = () => {
       if (!mounted) return;
@@ -461,17 +498,6 @@ export default function LiveMap() {
       ws.onopen = () => {
         if (!mounted) return;
         setSocketReady(true);
-        ws!.send(
-          JSON.stringify({
-            type: "location_update",
-            user_id: userId,
-            username: uHandle,
-            vibeEmoji: uEmoji,
-            avatar_url: uAvatar,
-            lat: uLat,
-            lng: uLng,
-          })
-        );
       };
 
       ws.onmessage = (ev) => {
@@ -497,7 +523,6 @@ export default function LiveMap() {
           } else if (msg.type === "hotspots_list") {
             setIntents(msg.hotspots || []);
 
-            // Keep selected hotspot updated in real-time
             if (selectedHotspotRef.current) {
               const updated = msg.hotspots.find(
                 (h: any) => h.id === selectedHotspotRef.current?.id
@@ -505,12 +530,10 @@ export default function LiveMap() {
               if (updated) {
                 setSelectedHotspot(updated);
               } else {
-                // Hotspot deleted / host closed it
                 setSelectedHotspot(null);
               }
             }
           } else if (msg.type === "hotspot_created") {
-            // Automatically open the drawer for the newly created room
             setSelectedHotspot(msg.hotspot);
           } else if (msg.type === "join_request_received") {
             if (selectedHotspotRef.current && selectedHotspotRef.current.id === msg.roomId) {
@@ -568,35 +591,45 @@ export default function LiveMap() {
       socketRef.current = null;
       setSocketReady(false);
     };
-  }, [
-    !!location,
-    user?.username,
-    profile?.avatar_url,
-    profile?.handle,
-    profile?.vibeEmoji,
-    maskLocation,
-  ]);
+    // Only reconnect on identity change — NOT on profile edits
+  }, [!!location, user?.username, maskLocation]);
 
-  // Send location update to WebSocket server whenever location coordinates change
+  // Send location + profile update to WebSocket whenever anything changes
+  // This does NOT tear down the connection — it just sends a message
   useEffect(() => {
     const ws = socketRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN && location) {
-      const finalAnonId = typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : "anon";
-      const userId = user?.id || user?.username || finalAnonId || "anon";
-      ws.send(
-        JSON.stringify({
-          type: "location_update",
-          user_id: userId,
-          username: handle,
-          vibeEmoji: vibeEmoji,
-          avatar_url: myAvatarUrl,
-          lat: location.lat,
-          lng: location.lng,
-        })
-      );
-      ws.send(JSON.stringify({ type: "request_sync" }));
-    }
-  }, [location?.lat, location?.lng, socketReady, handle, vibeEmoji, myAvatarUrl]);
+    if (!ws || ws.readyState !== WebSocket.OPEN || !location) return;
+    const finalAnonId = typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : "anon";
+    const userId = user?.id || user?.username || finalAnonId || "anon";
+    ws.send(
+      JSON.stringify({
+        type: "location_update",
+        user_id: userId,
+        username: handle,
+        vibeEmoji: vibeEmoji,
+        avatar_url: myAvatarUrl,
+        lat: location.lat,
+        lng: location.lng,
+        bio: profile?.bio || "",
+        selectedTags: profile?.selectedTags || [],
+        gender: profile?.gender || "",
+        age: profile?.age || "",
+        blockedUsers: profile?.blockedUsers || [],
+      })
+    );
+  }, [
+    location?.lat,
+    location?.lng,
+    socketReady,
+    handle,
+    vibeEmoji,
+    myAvatarUrl,
+    profile?.bio,
+    profile?.selectedTags,
+    profile?.gender,
+    profile?.age,
+    profile?.blockedUsers,
+  ]);
 
   const postIntent = () => {
     const ws = socketRef.current;
@@ -616,6 +649,10 @@ export default function LiveMap() {
         title: intentText.trim(),
         lat: location.lat,
         lng: location.lng,
+        host_bio: profile?.bio || "",
+        host_tags: profile?.selectedTags || [],
+        host_gender: profile?.gender || "",
+        host_age: profile?.age || undefined,
       })
     );
     setIntentText("");
@@ -749,23 +786,23 @@ export default function LiveMap() {
 
   // Filter nearby users (within 10km)
   const filteredUsers = activeUsers.filter((u) => {
-    return getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= 10;
+    const blockedIds = profile?.blockedUsers || [];
+    const isBlocked = blockedIds.includes(u.user_id) || (u.blockedUsers || []).includes(myUserId);
+    const isWithinRange = getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= 10;
+    return !isBlocked && isWithinRange;
   });
 
   // Filter nearby active hotspots (within 10km)
   const filteredHotspots = intents.filter((h) => {
+    const blockedIds = profile?.blockedUsers || [];
+    const isBlocked = blockedIds.includes(h.host_id);
     const isWithinRange = getDistanceKm(location.lat, location.lng, h.lat, h.lng) <= 10;
     const isNotExpired = h.expires_at > Date.now();
     const isMatchesFilter = matchesFilter(h, selectedFilter);
-    return isWithinRange && isNotExpired && isMatchesFilter;
+    return !isBlocked && isWithinRange && isNotExpired && isMatchesFilter;
   });
 
   // Check my guest/host status for the selected room
-  const myUserId =
-    user?.id ||
-    user?.username ||
-    (typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : null) ||
-    "anon";
   const isHost = selectedHotspot?.host_id === myUserId;
   const myRequest = selectedHotspot?.requests?.find((r: any) => r.user_id === myUserId);
   const guestStatus = myRequest ? myRequest.status : "none"; // 'pending' | 'accepted' | 'declined' | 'none'
@@ -829,21 +866,12 @@ export default function LiveMap() {
               key={u.user_id || idx}
               position={[u.lat, u.lng]}
               icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, u.user_id)}
-            >
-              <Popup>
-                <div className="flex items-center gap-2.5 p-2.5 pr-7 bg-white">
-                  <img
-                    src={av}
-                    className="w-9 h-9 rounded-full object-cover bg-zinc-50 border border-zinc-100"
-                    alt={u.username}
-                  />
-                  <div>
-                    <p className="font-bold text-xs text-zinc-900">{u.username}</p>
-                    <p className="text-[10px] text-emerald-500 font-semibold mt-0.5">● Online now</p>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
+              eventHandlers={{
+                click: () => {
+                  setSelectedUser(u);
+                },
+              }}
+            />
           );
         })}
 
@@ -1052,8 +1080,11 @@ export default function LiveMap() {
                     <h3 className="text-sm font-bold text-zinc-900 leading-tight">
                       {selectedHotspot.title}
                     </h3>
-                    <p className="text-[10px] text-zinc-400 mt-1 flex items-center gap-1 font-semibold">
-                      <MapPin size={10} /> {distanceStr}
+                    <p className="text-[10px] text-zinc-400 font-semibold mt-0.5">
+                      {selectedHotspot.host_age ? `${selectedHotspot.host_age} y/o` : "Age not shared"} · {selectedHotspot.host_gender || "Gender not shared"}
+                    </p>
+                    <p className="text-[10px] text-zinc-450 mt-1 flex items-center gap-1 font-bold">
+                      <MapPin size={10} className="text-zinc-400" /> {distanceStr}
                     </p>
                   </div>
                 </div>
@@ -1065,6 +1096,30 @@ export default function LiveMap() {
                   <X size={14} />
                 </button>
               </div>
+
+              {/* Host Profile Info */}
+              {!isHost && (
+                <div className="bg-zinc-50 border border-zinc-100 rounded-2xl p-3.5 space-y-2.5 mt-3 mb-1">
+                  <div className="space-y-1">
+                    <h4 className="text-[9px] font-bold tracking-widest uppercase text-zinc-400">About Host</h4>
+                    <p className="text-xs text-zinc-700 leading-relaxed font-medium">
+                      {selectedHotspot.host_bio || "No tagline set."}
+                    </p>
+                  </div>
+                  {selectedHotspot.host_tags && selectedHotspot.host_tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {selectedHotspot.host_tags.map((tag: string) => (
+                        <span
+                          key={tag}
+                          className="px-2.5 py-1 bg-white border border-zinc-200/60 rounded-full text-[9px] font-semibold text-zinc-550"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Host vs Guest Views */}
               {isHost ? (
@@ -1153,6 +1208,8 @@ export default function LiveMap() {
                       messages={selectedHotspot.messages}
                       myUserId={myUserId}
                       onSendMessage={sendMessage}
+                      userLocation={location}
+                      hotspotTitle={selectedHotspot.title}
                     />
                   </div>
 
@@ -1271,6 +1328,8 @@ export default function LiveMap() {
                           messages={selectedHotspot.messages}
                           myUserId={myUserId}
                           onSendMessage={sendMessage}
+                          userLocation={location}
+                          hotspotTitle={selectedHotspot.title}
                         />
                       </div>
 
@@ -1288,6 +1347,121 @@ export default function LiveMap() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ─── USER PROFILE DETAILS BOTTOM DRAWER ─── */}
+      <AnimatePresence>
+        {selectedUser && (
+          <motion.div
+            initial={{ y: "100%", opacity: 0.95 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: "100%", opacity: 0.95 }}
+            transition={{ type: "spring", stiffness: 350, damping: 35 }}
+            className="fixed bottom-16 left-4 right-4 z-[900] max-w-lg mx-auto bg-white rounded-3xl border border-zinc-200 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] overflow-hidden"
+          >
+            {/* Drag Handle */}
+            <div className="flex justify-center pt-3 pb-1 bg-white">
+              <div className="w-10 h-1 rounded-full bg-zinc-200" />
+            </div>
+
+            <div className="px-5 pb-6 bg-white max-h-[70vh] overflow-y-auto scrollbar-none space-y-4">
+              {/* Header Info */}
+              <div className="flex justify-between items-start gap-3 border-b border-zinc-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <img
+                      src={selectedUser.avatar_url || getAvatarUrl(selectedUser.username)}
+                      className="w-14 h-14 rounded-full object-cover border border-zinc-150 bg-zinc-50"
+                      alt={selectedUser.username}
+                    />
+                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white border border-zinc-200 rounded-full flex items-center justify-center text-sm shadow-sm">
+                      {selectedUser.vibeEmoji || "🙂"}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-900 leading-tight">
+                      {selectedUser.username}
+                    </h3>
+                    <p className="text-[10px] text-zinc-400 font-semibold mt-0.5">
+                      {selectedUser.age ? `${selectedUser.age} y/o` : "Age not shared"} · {selectedUser.gender || "Gender not shared"}
+                    </p>
+                    <p className="text-[10px] text-zinc-450 mt-1 flex items-center gap-1 font-bold">
+                      <MapPin size={10} className="text-zinc-400" /> 
+                      {(() => {
+                        const dist = getDistanceKm(location.lat, location.lng, selectedUser.lat, selectedUser.lng);
+                        return dist < 0.1 ? "Here" : `${dist.toFixed(1)} km away`;
+                      })()}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setSelectedUser(null)}
+                  className="p-1.5 rounded-full bg-zinc-50 text-zinc-450 hover:text-zinc-650 hover:bg-zinc-100 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Tagline / Bio */}
+              <div className="space-y-1.5">
+                <h4 className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Tagline</h4>
+                <p className="text-xs text-zinc-700 leading-relaxed font-medium bg-zinc-50 rounded-2xl p-4 border border-zinc-100">
+                  {selectedUser.bio || "No tagline set."}
+                </p>
+              </div>
+
+              {/* Interests / Tags */}
+              {selectedUser.selectedTags && selectedUser.selectedTags.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Interests</h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedUser.selectedTags.map((tag: string) => (
+                      <span
+                        key={tag}
+                        className="px-3 py-1.5 bg-zinc-100 rounded-full text-[10px] font-semibold text-zinc-600"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Actions Footer */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    if (confirmBlock) {
+                      handleBlock(selectedUser.user_id);
+                    } else {
+                      setConfirmBlock(true);
+                    }
+                  }}
+                  className={`flex-1 py-3.5 rounded-2xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] ${
+                    confirmBlock 
+                      ? "border-rose-650 bg-rose-650 text-white hover:bg-rose-700" 
+                      : "border-rose-200 hover:bg-rose-50 text-rose-650"
+                  }`}
+                >
+                  {confirmBlock ? "Confirm Block?" : "Block / Report"}
+                </button>
+
+                <button
+                  onClick={() => setHasWaved(true)}
+                  disabled={hasWaved}
+                  className={`flex-1 py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    hasWaved 
+                      ? "bg-emerald-500 text-white" 
+                      : "bg-zinc-900 text-white hover:bg-black active:scale-[0.98]"
+                  }`}
+                >
+                  {hasWaved ? "Waved! 👋" : "Wave 👋"}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1297,13 +1471,19 @@ function ChatRoom({
   messages,
   myUserId,
   onSendMessage,
+  userLocation,
+  hotspotTitle,
 }: {
   messages: any[];
   myUserId: string;
   onSendMessage: (text: string) => void;
+  userLocation: { lat: number; lng: number };
+  hotspotTitle: string;
 }) {
   const [text, setText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [showSafety, setShowSafety] = useState(false);
+  const [copiedCoords, setCopiedCoords] = useState(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1315,8 +1495,56 @@ function ChatRoom({
     setText("");
   };
 
+  const handleCopySOS = () => {
+    const sosMsg = `🚨 [SOS Alert] I am meeting someone for Noirme hotspot "${hotspotTitle}". My current location is: https://maps.google.com/?q=${userLocation.lat},${userLocation.lng} (Coordinates: ${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)})`;
+    navigator.clipboard.writeText(sosMsg);
+    setCopiedCoords(true);
+    setTimeout(() => setCopiedCoords(false), 2000);
+  };
+
   return (
     <div className="flex flex-col gap-3">
+      {/* Safety SOS Banner */}
+      <div className="bg-amber-50/60 border border-amber-200/50 rounded-2xl p-3 text-zinc-800">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">🛡️</span>
+            <span className="text-[11px] font-bold text-amber-900">Physical Meetup Safety</span>
+          </div>
+          <button
+            onClick={() => setShowSafety(!showSafety)}
+            className="text-[10px] font-semibold text-amber-800 underline hover:text-amber-900"
+          >
+            {showSafety ? "Hide Tips" : "Show Tips & SOS"}
+          </button>
+        </div>
+        
+        {showSafety && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            className="mt-2.5 pt-2.5 border-t border-amber-200/40 space-y-2 text-[10px] text-amber-950 font-medium"
+          >
+            <ul className="list-disc pl-3.5 space-y-1">
+              <li>Meet in a busy, well-lit public space.</li>
+              <li>Share this location and meetup details with a trusted friend.</li>
+              <li>Keep your phone charged and in your hand.</li>
+              <li>If you feel unsafe at any point, walk away immediately.</li>
+            </ul>
+            <button
+              onClick={handleCopySOS}
+              className={`w-full mt-2 py-2 rounded-xl text-[10px] font-bold transition-all active:scale-[0.98] ${
+                copiedCoords 
+                  ? "bg-emerald-600 text-white" 
+                  : "bg-amber-600 hover:bg-amber-700 text-white"
+              }`}
+            >
+              {copiedCoords ? "✓ SOS Info Copied to Clipboard!" : "🚨 Copy SOS Coordinates & Details"}
+            </button>
+          </motion.div>
+        )}
+      </div>
+
       {/* Messages */}
       <div className="h-[180px] overflow-y-auto border border-zinc-100 bg-zinc-50/50 rounded-2xl p-3 flex flex-col gap-2.5 scrollbar-none">
         {messages.length === 0 ? (

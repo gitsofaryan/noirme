@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 declare global {
   interface Window {
@@ -18,6 +18,9 @@ export type UserProfile = {
   radarRange: number;
   selectedTags: string[];
   maskLocation: boolean;
+  gender: "Male" | "Female" | "Non-binary" | "Prefer not to say" | "";
+  age: number | "";
+  blockedUsers: string[];
 };
 
 type AuthContextType = {
@@ -26,6 +29,7 @@ type AuthContextType = {
   user: any | null;
   profile: UserProfile | null;
   saveProfile: (partial: Partial<UserProfile>) => Promise<void>;
+  blockUser: (targetUserId: string) => Promise<void>;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -76,7 +80,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const raw = await window.puter.kv.get(`profile_v2_${u.username}`);
       if (raw) {
-        setProfile(JSON.parse(raw));
+        const parsed = JSON.parse(raw);
+        setProfile({
+          gender: "",
+          age: "",
+          blockedUsers: [],
+          ...parsed,
+        });
       } else {
         // First-time defaults
         const defaultProfile: UserProfile = {
@@ -89,6 +99,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           radarRange: 2,
           selectedTags: [],
           maskLocation: true,
+          gender: "",
+          age: "",
+          blockedUsers: [],
         };
         setProfile(defaultProfile);
         await window.puter.kv.set(`profile_v2_${u.username}`, JSON.stringify(defaultProfile));
@@ -124,11 +137,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
+  // Reload profile from cloud KV on tab focus (debounced to avoid spam)
+  const lastFocusLoadRef = useRef(0);
+  useEffect(() => {
+    if (!user) return;
+    const handleFocus = () => {
+      const now = Date.now();
+      if (now - lastFocusLoadRef.current < 2000) return;
+      lastFocusLoadRef.current = now;
+      loadProfile(user);
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [user]);
+
   const saveProfile = async (partial: Partial<UserProfile>) => {
     if (!user || !profile) return;
     const updated = { ...profile, ...partial };
     setProfile(updated);
     await window.puter.kv.set(`profile_v2_${user.username}`, JSON.stringify(updated));
+  };
+
+  const blockUser = async (targetUserId: string) => {
+    if (!profile) return;
+    const currentBlocks = profile.blockedUsers || [];
+    if (currentBlocks.includes(targetUserId)) return;
+    const updatedBlocks = [...currentBlocks, targetUserId];
+    await saveProfile({ blockedUsers: updatedBlocks });
   };
 
   const signIn = async () => {
@@ -156,7 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isSignedIn, isLoading, user, profile, saveProfile, signIn, signOut }}>
+    <AuthContext.Provider value={{ isSignedIn, isLoading, user, profile, saveProfile, blockUser, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

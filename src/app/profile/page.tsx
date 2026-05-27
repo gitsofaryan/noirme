@@ -49,6 +49,8 @@ export default function ProfilePage() {
   const { isSignedIn, isLoading, user, profile, saveProfile, signIn, signOut } = useAuth();
 
   const [handle, setHandle] = useState("");
+  const [gender, setGender] = useState<"Male" | "Female" | "Non-binary" | "Prefer not to say" | "">("");
+  const [age, setAge] = useState<number | "">("");
   const [bio, setBio] = useState("");
   const [vibeEmoji, setVibeEmoji] = useState("☕");
   const [radarRange, setRadarRange] = useState(2);
@@ -58,6 +60,7 @@ export default function ProfilePage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Avatar Picker States
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
@@ -181,15 +184,43 @@ export default function ProfilePage() {
       setSelectedTags(profile.selectedTags);
       setMaskLocation(profile.maskLocation);
       setAvatarUrl(profile.avatar_url || getAvatarUrl(profile.username));
+      setGender(profile.gender || "");
+      setAge(profile.age || "");
     }
   }, [profile]);
 
   const handleSave = async () => {
+    setError(null);
+    if (!handle.trim()) {
+      setError("Display name is required.");
+      return;
+    }
+    if (!gender) {
+      setError("Gender is required.");
+      return;
+    }
+    if (age === "" || isNaN(Number(age)) || Number(age) <= 0) {
+      setError("Please enter a valid age.");
+      return;
+    }
     setIsSaving(true);
     try {
-      await saveProfile({ handle, bio, vibeEmoji, radarRange, selectedTags, maskLocation, avatar_url: avatarUrl });
+      await saveProfile({ 
+        handle, 
+        bio, 
+        vibeEmoji, 
+        radarRange, 
+        selectedTags, 
+        maskLocation, 
+        avatar_url: avatarUrl,
+        gender,
+        age: Number(age)
+      });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (e) {
+      console.error(e);
+      setError("Failed to save profile.");
     } finally {
       setIsSaving(false);
     }
@@ -346,6 +377,47 @@ export default function ProfilePage() {
           />
         </div>
 
+        {/* Age */}
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Age *</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={age}
+            onChange={e => {
+              const val = e.target.value;
+              setAge(val === "" ? "" : parseInt(val));
+            }}
+            placeholder="e.g. 21"
+            className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm font-medium text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
+          />
+        </div>
+
+        {/* Gender */}
+        <div className="space-y-2.5">
+          <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Gender *</label>
+          <div className="flex flex-wrap gap-2">
+            {(["Male", "Female", "Non-binary", "Prefer not to say"] as const).map(option => {
+              const active = gender === option;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setGender(option)}
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-semibold transition-all duration-150 ${
+                    active
+                      ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                      : "bg-zinc-50 border-zinc-200/80 text-zinc-550 hover:border-zinc-300"
+                  }`}
+                >
+                  {option}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Bio */}
         <div className="space-y-2">
           <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Tagline</label>
@@ -424,22 +496,27 @@ export default function ProfilePage() {
         </div>
 
         {/* Save */}
-        <motion.button
-          whileTap={{ scale: 0.98 }}
-          onClick={handleSave}
-          disabled={isSaving}
-          className={`w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-            saveSuccess ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white hover:bg-black"
-          } disabled:opacity-50`}
-        >
-          {isSaving ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : saveSuccess ? (
-            "✓ Saved!"
-          ) : (
-            "Save Profile"
+        <div className="space-y-2">
+          {error && (
+            <p className="text-xs text-red-500 font-semibold text-center">{error}</p>
           )}
-        </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.98 }}
+            onClick={handleSave}
+            disabled={isSaving}
+            className={`w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+              saveSuccess ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white hover:bg-black"
+            } disabled:opacity-50`}
+          >
+            {isSaving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : saveSuccess ? (
+              "✓ Saved!"
+            ) : (
+              "Save Profile"
+            )}
+          </motion.button>
+        </div>
 
         {/* Bottom padding for safe area */}
         <div className="h-2" />

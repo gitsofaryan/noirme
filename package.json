@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"next dev --webpack\" \"npx tsx src/server/socket-server.ts\"",
-    "dev:ws": "npx tsx src/server/socket-server.ts",
+    "dev": "concurrently \"next dev --webpack\" \"npx tsx --watch src/server/socket-server.ts\"",
+    "dev:ws": "npx tsx --watch src/server/socket-server.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
