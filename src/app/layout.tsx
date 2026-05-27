@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import BottomNav from "@/components/BottomNav";
 import { AuthProvider } from "@/hooks/useAuth";
+import { LoadingProvider } from "@/hooks/useLoading";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -47,10 +48,12 @@ export default function RootLayout({
       <body className="h-full bg-white text-zinc-900 selection:bg-zinc-200 overflow-hidden">
         <Script src="https://js.puter.com/v2/" strategy="beforeInteractive" />
         <AuthProvider>
-          <main className="absolute inset-0 pb-16 overflow-hidden">
-            {children}
-          </main>
-          <BottomNav />
+          <LoadingProvider>
+            <main className="absolute inset-0 pb-16 overflow-hidden">
+              {children}
+            </main>
+            <BottomNav />
+          </LoadingProvider>
         </AuthProvider>
       </body>
     </html>

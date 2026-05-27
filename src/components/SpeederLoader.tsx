@@ -1,26 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState } from "react";
-
 export default function SpeederLoader() {
-  const [quoteIndex, setQuoteIndex] = useState(0);
-  const QUOTES = [
-    "your crew is closer than you think. 🗺️",
-    "spontaneous meetups > scrolling forever. ☕",
-    "someone nearby is up for chai right now. 🍵",
-    "don't be alone, let's coordinate something. 🤝",
-    "the world is better offline. find your people. 🌍",
-    "spontaneity is the best vibe. ⚡",
-  ];
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setQuoteIndex((prev) => (prev + 1) % QUOTES.length);
-    }, 2800);
-    return () => clearInterval(interval);
-  }, []);
-
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-screen bg-[#FDFDFD] relative overflow-hidden px-8 text-center w-full">
       {/* Injected Speeder Loader CSS */}
@@ -213,7 +193,7 @@ export default function SpeederLoader() {
       </div>
 
       {/* Loader Speeder Container */}
-      <div className="relative w-full max-w-xs h-[160px] flex items-center justify-center">
+      <div className="relative w-full max-w-xs h-40 flex items-center justify-center">
         <div className="loader">
           <span>
             <span></span>
@@ -230,38 +210,7 @@ export default function SpeederLoader() {
 
       {/* Content Overlay */}
       <div className="z-20 text-center mt-6 space-y-4 max-w-xs">
-        <h1 className="text-2xl font-bold tracking-tight text-black uppercase animate-pulse">
-          Noirme
-        </h1>
-
-        <div className="h-12 flex items-center justify-center">
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={quoteIndex}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3 }}
-              className="text-xs text-zinc-500 font-semibold leading-relaxed"
-            >
-              {QUOTES[quoteIndex]}
-            </motion.p>
-          </AnimatePresence>
-        </div>
-
-        {/* Progress Bar */}
-        <div className="w-48 h-0.5 bg-zinc-100 rounded-full mx-auto mt-6 overflow-hidden relative">
-          <div className="h-full bg-black w-1/3 animate-[progress_2s_ease-in-out_infinite]"></div>
-        </div>
       </div>
-
-      <style>{`
-        @keyframes progress {
-          0% { transform: translateX(-100%); }
-          50% { transform: translateX(50%); }
-          100% { transform: translateX(200%); }
-        }
-      `}</style>
     </div>
   );
 }
