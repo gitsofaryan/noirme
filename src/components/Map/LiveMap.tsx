@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Users,
   LogOut,
+  Bell,
   Trash2,
   Lock,
 } from "lucide-react";
@@ -72,6 +73,13 @@ function MapController({
   setZoom: (val: number) => void;
 }) {
   const map = useMap();
+
+  useEffect(() => {
+    (window as any).leafletMap = map;
+    return () => {
+      delete (window as any).leafletMap;
+    };
+  }, [map]);
 
   // Update zoom state initially and on zoom events
   useEffect(() => {
@@ -335,6 +343,8 @@ export default function LiveMap() {
 
   const [activeWaves, setActiveWaves] = useState<{ sender_id: string; expires_at: number }[]>([]);
   const [toasts, setToasts] = useState<{ id: string; message: string; type: "default" | "wave" }[]>([]);
+  const [notifications, setNotifications] = useState<{ id: string; text: string; time: number; read: boolean }[]>([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
   const addToast = (message: string, type: "default" | "wave" = "default") => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -394,7 +404,7 @@ export default function LiveMap() {
     setSelectedUser(null);
   };
   const locationOffsetRef = useRef<{ latOffset: number; lngOffset: number } | null>(null);
-  
+
   const getStableOffset = () => {
     if (!locationOffsetRef.current) {
       locationOffsetRef.current = {
@@ -493,7 +503,7 @@ export default function LiveMap() {
     let finished = false;
 
     // Fast IP Geolocation fallback so map is never collapsed
-      getIPLocation()
+    getIPLocation()
       .then((ipLoc) => {
         if (!finished && ipLoc) {
           const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
@@ -529,7 +539,7 @@ export default function LiveMap() {
           setLocStatus("granted");
         }
       },
-      () => {}, // Ignore errors, watchPosition will handle it
+      () => { }, // Ignore errors, watchPosition will handle it
       { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
     );
 
@@ -621,6 +631,16 @@ export default function LiveMap() {
                   n[idx] = msg.data;
                   return n;
                 }
+                // New user joined!
+                setNotifications(prevNotifs => [
+                  {
+                    id: Math.random().toString(36).substring(7),
+                    text: `@${msg.data.username} is now nearby`,
+                    time: Date.now(),
+                    read: false
+                  },
+                  ...prevNotifs
+                ].slice(0, 5));
                 return [...prev, msg.data];
               });
             }
@@ -640,6 +660,10 @@ export default function LiveMap() {
           } else if (msg.type === "hotspot_created") {
             setSelectedHotspot(msg.hotspot);
           } else if (msg.type === "join_request_received") {
+            setNotifications(prev => [
+              { id: Math.random().toString(36).substring(7), text: `@${msg.username} wants to join your hotspot`, time: Date.now(), read: false },
+              ...prev
+            ].slice(0, 5));
             if (selectedHotspotRef.current && selectedHotspotRef.current.id === msg.roomId) {
               setSelectedHotspot(msg.hotspot);
             }
@@ -664,6 +688,10 @@ export default function LiveMap() {
             }
           } else if (msg.type === "wave_received") {
             addToast(`👋 ${msg.sender_username} waved at you!`, "wave");
+            setNotifications(prev => [
+              { id: Math.random().toString(36).substring(7), text: `@${msg.sender_username} waved at you!`, time: Date.now(), read: false },
+              ...prev
+            ].slice(0, 5));
             setActiveWaves((prev) => [
               ...prev.filter((w) => w.sender_id !== msg.sender_id),
               { sender_id: msg.sender_id, expires_at: Date.now() + 10000 },
@@ -1042,15 +1070,85 @@ export default function LiveMap() {
         </div>
       </div>
 
-      {/* Online Users Bubble */}
-      <div className="absolute top-16 right-4 z-[400] flex flex-col items-center justify-center gap-1.5 bg-white/95 backdrop-blur-md w-9 h-14 rounded-full border border-zinc-200 shadow-sm py-2">
-        <span
-          className={`w-2 h-2 rounded-full ${socketReady ? "bg-emerald-500 animate-pulse" : "bg-amber-400 animate-pulse"
-            }`}
-        />
-        <span className="text-[11px] font-bold text-zinc-600">
-          {filteredUsers.length}
-        </span>
+      <div className="absolute top-[72px] left-4 z-[400] flex flex-col gap-2">
+        {/* Zoom Controls */}
+        <div className="flex flex-col bg-white/95 backdrop-blur-sm rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+          <button
+            onClick={() => {
+              const map = (window as any).leafletMap;
+              if (map) map.setZoom(map.getZoom() + 1);
+            }}
+            className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:bg-zinc-50 border-b border-zinc-100 transition-colors font-bold text-lg"
+          >
+            +
+          </button>
+          <button
+            onClick={() => {
+              const map = (window as any).leafletMap;
+              if (map) map.setZoom(map.getZoom() - 1);
+            }}
+            className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:bg-zinc-50 transition-colors font-bold text-lg"
+          >
+            −
+          </button>
+        </div>
+
+        {/* Nearby Count */}
+        <div className="flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm px-2.5 py-1.5 rounded-full border border-zinc-200 shadow-sm self-start">
+          <span className="text-[11px] font-bold text-zinc-900 leading-none">
+            {filteredUsers.length}
+          </span>
+        </div>
+      </div>
+
+      {/* Notifications (Top Right) */}
+      <div className="absolute top-[72px] right-4 z-[400]">
+        <button
+          onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+          className="relative w-9 h-9 flex items-center justify-center bg-white/95 backdrop-blur-sm rounded-full border border-zinc-200 shadow-sm text-zinc-600 hover:text-zinc-900 transition-colors"
+        >
+          <Bell size={18} />
+          {notifications.some(n => !n.read) && (
+            <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
+          )}
+        </button>
+
+        <AnimatePresence>
+          {showNotifDropdown && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-zinc-200 shadow-xl overflow-hidden"
+            >
+              <div className="px-4 py-3 border-b border-zinc-100 flex justify-between items-center">
+                <span className="text-xs font-bold text-zinc-900 uppercase tracking-tight">Recent Activity</span>
+                <button
+                  onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                  className="text-[10px] text-zinc-400 font-bold hover:text-zinc-900"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="max-h-60 overflow-y-auto py-1">
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <p className="text-[11px] font-medium text-zinc-400">No recent activity</p>
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div key={n.id} className="px-4 py-3 hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0">
+                      <p className="text-[11px] font-medium text-zinc-800 leading-tight">{n.text}</p>
+                      <p className="text-[9px] text-zinc-400 mt-1 uppercase font-bold tracking-tighter">
+                        {new Date(n.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Action Buttons (Compass + FAB) */}
@@ -1063,7 +1161,7 @@ export default function LiveMap() {
         >
           <Compass size={22} strokeWidth={2.5} />
         </button>
-        
+
         {/* Post Intent Button */}
         {isSignedIn && (
           <motion.button
@@ -1505,7 +1603,7 @@ export default function LiveMap() {
                       {selectedUser.age ? `${selectedUser.age} y/o` : "Age not shared"} · {selectedUser.gender || "Gender not shared"}
                     </p>
                     <p className="text-[10px] text-zinc-450 mt-1 flex items-center gap-1 font-bold">
-                      <MapPin size={10} className="text-zinc-400" /> 
+                      <MapPin size={10} className="text-zinc-400" />
                       {(() => {
                         const dist = getDistanceKm(location.lat, location.lng, selectedUser.lat, selectedUser.lng);
                         return dist < 0.1 ? "Here" : `${dist.toFixed(1)} km away`;
@@ -1557,11 +1655,10 @@ export default function LiveMap() {
                       setConfirmBlock(true);
                     }
                   }}
-                  className={`flex-1 py-3.5 rounded-2xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] ${
-                    confirmBlock 
-                      ? "border-rose-650 bg-rose-650 text-white hover:bg-rose-700" 
+                  className={`flex-1 py-3.5 rounded-2xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] ${confirmBlock
+                      ? "border-rose-650 bg-rose-650 text-white hover:bg-rose-700"
                       : "border-rose-200 hover:bg-rose-50 text-rose-650"
-                  }`}
+                    }`}
                 >
                   {confirmBlock ? "Confirm Block?" : "Block / Report"}
                 </button>
@@ -1569,11 +1666,10 @@ export default function LiveMap() {
                 <button
                   onClick={handleWave}
                   disabled={hasWaved}
-                  className={`flex-1 py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    hasWaved 
-                      ? "bg-emerald-500 text-white" 
+                  className={`flex-1 py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${hasWaved
+                      ? "bg-emerald-500 text-white"
                       : "bg-zinc-900 text-white hover:bg-black active:scale-[0.98]"
-                  }`}
+                    }`}
                 >
                   {hasWaved ? "Waved! 👋" : "Wave 👋"}
                 </button>
@@ -1592,9 +1688,8 @@ export default function LiveMap() {
               initial={{ y: -20, opacity: 0, scale: 0.9 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: -20, opacity: 0, scale: 0.9 }}
-              className={`px-5 py-3 rounded-full shadow-lg text-sm font-bold flex items-center gap-2 pointer-events-auto ${
-                toast.type === "wave" ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white"
-              }`}
+              className={`px-5 py-3 rounded-full shadow-lg text-sm font-bold flex items-center gap-2 pointer-events-auto ${toast.type === "wave" ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white"
+                }`}
             >
               {toast.message}
             </motion.div>
@@ -1657,7 +1752,7 @@ function ChatRoom({
             {showSafety ? "Hide Tips" : "Show Tips & SOS"}
           </button>
         </div>
-        
+
         {showSafety && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
@@ -1672,11 +1767,10 @@ function ChatRoom({
             </ul>
             <button
               onClick={handleCopySOS}
-              className={`w-full mt-2 py-2 rounded-xl text-[10px] font-bold transition-all active:scale-[0.98] ${
-                copiedCoords 
-                  ? "bg-emerald-600 text-white" 
+              className={`w-full mt-2 py-2 rounded-xl text-[10px] font-bold transition-all active:scale-[0.98] ${copiedCoords
+                  ? "bg-emerald-600 text-white"
                   : "bg-amber-600 hover:bg-amber-700 text-white"
-              }`}
+                }`}
             >
               {copiedCoords ? "✓ SOS Info Copied to Clipboard!" : "🚨 Copy SOS Coordinates & Details"}
             </button>
