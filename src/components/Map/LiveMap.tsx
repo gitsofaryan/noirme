@@ -293,7 +293,30 @@ export default function LiveMap() {
     return locationOffsetRef.current;
   };
 
-  const [location, setLocation] = useState<{ lat: number; lng: number }>(FALLBACK);
+  const [location, setLocation] = useState<{ lat: number; lng: number }>(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("noirme_last_location");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (typeof parsed.lat === "number" && typeof parsed.lng === "number") {
+            return parsed;
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }
+    return FALLBACK;
+  });
+
+  // Save successfully retrieved location to cache
+  useEffect(() => {
+    if (location && (location.lat !== FALLBACK.lat || location.lng !== FALLBACK.lng)) {
+      localStorage.setItem("noirme_last_location", JSON.stringify(location));
+    }
+  }, [location.lat, location.lng]);
+
   const [locStatus, setLocStatus] = useState<"waiting" | "granted" | "denied">("waiting");
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [intents, setIntents] = useState<any[]>([]);
