@@ -43,15 +43,13 @@ export default function BottomNav() {
                 )}
                 <Icon
                   size={22}
-                  className={`relative z-10 transition-colors duration-200 ${
-                    isActive ? "text-zinc-900" : "text-zinc-400"
-                  }`}
+                  className={`relative z-10 transition-colors duration-200 ${isActive ? "text-zinc-900" : "text-zinc-400"
+                    }`}
                   strokeWidth={isActive ? 2.5 : 1.8}
                 />
                 <span
-                  className={`relative z-10 text-[9px] font-bold tracking-widest uppercase transition-colors duration-200 ${
-                    isActive ? "text-zinc-900" : "text-zinc-400"
-                  }`}
+                  className={`relative z-10 text-[9px] font-bold tracking-widest uppercase transition-colors duration-200 ${isActive ? "text-zinc-900" : "text-zinc-400"
+                    }`}
                 >
                   {item.name}
                 </span>
