@@ -317,14 +317,14 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string, zoom: num
 }
 
 const FILTER_KEYWORDS: Record<string, string[]> = {
-  cafe: ["coffee", "chai", "boba", "tea", "ramen", "food", "eat", "matcha", "latte", "café", "cafe", "brunch", "lunch", "dinner", "cook"],
-  dating: ["date", "dating", "love", "crush", "vibe", "connection", "hangout", "chill", "flirt", "coffee date", "sunset", "romantic"],
-  gaming: ["game", "gaming", "chess", "board", "cards", "esport", "valorant", "minecraft", "ps5", "xbox", "pubg", "bgmi", "cod", "fortnite", "dice", "ludo"],
-  movies: ["movie", "film", "cinema", "netflix", "anime", "watch", "series", "binge", "popcorn", "marvel", "bollywood", "horror", "comedy", "thriller"],
-  study: ["study", "code", "coding", "book", "exam", "learn", "grind", "library", "homework", "project", "hackathon", "dsa", "leetcode"],
-  music: ["guitar", "jam", "music", "vinyl", "sing", "beat", "lofi", "karaoke", "concert", "piano", "rap", "podcast", "spotify"],
-  sports: ["gym", "run", "walk", "bike", "swim", "sport", "workout", "yoga", "cricket", "football", "basketball", "badminton", "trek", "hike"],
-  chill: ["chill", "vibe", "hangout", "drive", "explore", "roam", "wander", "sunset", "night", "midnight", "smoke", "terrace", "rooftop"],
+  cafe: ["coffee", "chai", "boba", "tea", "ramen", "food", "eat", "matcha", "latte", "café", "cafe", "brunch", "lunch", "dinner", "cook", "☕", "🍵", "🧋", "🍜", "🍕"],
+  dating: ["date", "dating", "love", "crush", "vibe", "connection", "hangout", "chill", "flirt", "coffee date", "sunset", "romantic", "💕", "✨", "🔥"],
+  gaming: ["game", "gaming", "chess", "board", "cards", "esport", "valorant", "minecraft", "ps5", "xbox", "pubg", "bgmi", "cod", "fortnite", "dice", "ludo", "🎮", "🎲", "🎯"],
+  movies: ["movie", "film", "cinema", "netflix", "anime", "watch", "series", "binge", "popcorn", "marvel", "bollywood", "horror", "comedy", "thriller", "🍿", "🎬", "🎌"],
+  study: ["study", "code", "coding", "book", "exam", "learn", "grind", "library", "homework", "project", "hackathon", "dsa", "leetcode", "🎒", "📚", "💻"],
+  music: ["guitar", "jam", "music", "vinyl", "sing", "beat", "lofi", "karaoke", "concert", "piano", "rap", "podcast", "spotify", "🎸", "🎧", "🎤"],
+  sports: ["gym", "run", "walk", "bike", "swim", "sport", "workout", "yoga", "cricket", "football", "basketball", "badminton", "trek", "hike", "🛹", "🏋️", "🚴", "🏃", "🧘"],
+  chill: ["chill", "vibe", "hangout", "drive", "explore", "roam", "wander", "sunset", "night", "midnight", "smoke", "terrace", "rooftop", "🎨", "⚡", "📷", "🌿", "🍳", "🚗", "🌙"],
 };
 
 function matchesFilter(intent: any, key: string): boolean {
@@ -333,6 +333,24 @@ function matchesFilter(intent: any, key: string): boolean {
   if (!keywords) return true;
   const t = (intent.title || "").toLowerCase();
   return keywords.some((k) => t.includes(k));
+}
+
+function matchesUserFilter(u: any, key: string): boolean {
+  if (key === "all") return true;
+  const keywords = FILTER_KEYWORDS[key];
+  if (!keywords) return true;
+
+  // Match by vibe emoji
+  const userVibe = u.vibeEmoji || "";
+  if (keywords.includes(userVibe)) return true;
+
+  // Match by their bio or tags
+  const bio = (u.bio || "").toLowerCase();
+  const tags = u.selectedTags || [];
+  if (keywords.some((k) => bio.includes(k))) return true;
+  if (tags.some((tag: string) => keywords.some((k) => tag.toLowerCase().includes(k)))) return true;
+
+  return false;
 }
 
 async function getIPLocation(): Promise<{ lat: number; lng: number } | null> {
@@ -666,28 +684,31 @@ export default function LiveMap() {
           const msg = JSON.parse(ev.data);
 
           if (msg.type === "sync") {
-            setActiveUsers(msg.users.filter((u: any) => u.user_id !== userId));
+            // Deduplicate by user_id (last one wins)
+            const userMap = new Map<string, any>();
+            for (const u of msg.users) {
+              if (u.user_id !== userId) userMap.set(u.user_id, u);
+            }
+            setActiveUsers(Array.from(userMap.values()));
             setIntents(msg.hotspots || []);
           } else if (msg.type === "location_update") {
             if (msg.data.user_id !== userId) {
               setActiveUsers((prev) => {
-                const idx = prev.findIndex((u) => u.user_id === msg.data.user_id);
-                if (idx >= 0) {
-                  const n = [...prev];
-                  n[idx] = msg.data;
-                  return n;
+                // Deduplicate: remove any existing entry with same user_id first
+                const filtered = prev.filter((u) => u.user_id !== msg.data.user_id);
+                // Notify only if truly new
+                if (!prev.some((u) => u.user_id === msg.data.user_id)) {
+                  setNotifications(prevNotifs => [
+                    {
+                      id: Math.random().toString(36).substring(7),
+                      text: `@${msg.data.username} is now nearby`,
+                      time: Date.now(),
+                      read: false
+                    },
+                    ...prevNotifs
+                  ].slice(0, 5));
                 }
-                // New user joined!
-                setNotifications(prevNotifs => [
-                  {
-                    id: Math.random().toString(36).substring(7),
-                    text: `@${msg.data.username} is now nearby`,
-                    time: Date.now(),
-                    read: false
-                  },
-                  ...prevNotifs
-                ].slice(0, 5));
-                return [...prev, msg.data];
+                return [...filtered, msg.data];
               });
             }
           } else if (msg.type === "hotspots_list") {
@@ -786,7 +807,7 @@ export default function LiveMap() {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "request_sync" }));
       }
-    }, 45000); // 45 seconds
+    }, 30000); // 30 seconds
     return () => clearInterval(interval);
   }, [socketReady]);
 
@@ -813,6 +834,14 @@ export default function LiveMap() {
         blockedUsers: [...(profile?.blockedUsers || []), ...localBlocks],
       })
     );
+    // Request sync shortly after sending location so we discover peers who are already nearby
+    const syncTimer = setTimeout(() => {
+      const ws2 = socketRef.current;
+      if (ws2 && ws2.readyState === WebSocket.OPEN) {
+        ws2.send(JSON.stringify({ type: "request_sync" }));
+      }
+    }, 500);
+    return () => clearTimeout(syncTimer);
   }, [
     location?.lat,
     location?.lng,
@@ -1002,7 +1031,8 @@ export default function LiveMap() {
     const blockedIds = [...(profile?.blockedUsers || []), ...localBlocks];
     const isBlocked = blockedIds.includes(u.user_id) || (u.blockedUsers || []).includes(myUserId);
     const isWithinRange = getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= 10;
-    return !isBlocked && isWithinRange;
+    const isMatchesFilter = matchesUserFilter(u, selectedFilter);
+    return !isBlocked && isWithinRange && isMatchesFilter;
   });
 
   // Filter nearby active hotspots (within 10km)
@@ -1079,7 +1109,7 @@ export default function LiveMap() {
           const isWaving = activeWaves.some((w) => w.sender_id === u.user_id);
           return (
             <Marker
-              key={u.user_id || idx}
+              key={`user-${u.user_id || idx}`}
               position={[u.lat, u.lng]}
               icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, zoom, u.user_id, isWaving)}
               eventHandlers={{
@@ -1138,28 +1168,6 @@ export default function LiveMap() {
             </div>
 
             <div className="pointer-events-auto absolute top-[72px] left-4 flex flex-col gap-2">
-              {/* Zoom Controls */}
-              <div className="flex flex-col bg-white/95 backdrop-blur-sm rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-                <button
-                  onClick={() => {
-                    const map = (window as any).leafletMap;
-                    if (map) map.setZoom(map.getZoom() + 1);
-                  }}
-                  className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:bg-zinc-50 border-b border-zinc-100 transition-colors font-bold text-lg"
-                >
-                  +
-                </button>
-                <button
-                  onClick={() => {
-                    const map = (window as any).leafletMap;
-                    if (map) map.setZoom(map.getZoom() - 1);
-                  }}
-                  className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:bg-zinc-50 transition-colors font-bold text-lg"
-                >
-                  −
-                </button>
-              </div>
-
               {/* Nearby Count */}
               <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm px-2.5 py-1.5 rounded-full border border-zinc-200 shadow-sm self-start">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${socketReady ? "bg-emerald-500 animate-pulse" : "bg-amber-400 animate-pulse"}`} />
@@ -1186,7 +1194,13 @@ export default function LiveMap() {
 
               <AnimatePresence>
                 {showNotifDropdown && (
-                  <motion.div
+                  <>
+                    {/* Invisible backdrop to close dropdown on outside click */}
+                    <div
+                      className="fixed inset-0 z-[-1]"
+                      onClick={() => setShowNotifDropdown(false)}
+                    />
+                    <motion.div
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -1218,6 +1232,7 @@ export default function LiveMap() {
                       )}
                     </div>
                   </motion.div>
+                  </>
                 )}
               </AnimatePresence>
             </div>

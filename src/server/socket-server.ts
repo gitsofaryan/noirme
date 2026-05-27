@@ -228,18 +228,24 @@ async function sendSync(ws: WebSocket) {
   );
 }
 
-function broadcastLocationUpdate(data: ClientInfo) {
+function broadcastLocationUpdate(data: ClientInfo, senderWs?: WebSocket) {
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
+      // Don't send back to the sender
+      if (senderWs && client === senderWs) return;
+
       const recipientInfo = clientsLocal.get(client);
       if (recipientInfo) {
+        // Don't send to yourself (same user_id from another tab)
+        if (recipientInfo.user_id === data.user_id) return;
+
         const iBlockedU = (data.blockedUsers || []).includes(recipientInfo.user_id);
         const uBlockedMe = (recipientInfo.blockedUsers || []).includes(data.user_id);
         if (iBlockedU || uBlockedMe) return;
 
         if (recipientInfo.lat && recipientInfo.lng && data.lat && data.lng) {
           const distance = getDistanceKm(recipientInfo.lat, recipientInfo.lng, data.lat, data.lng);
-          if (distance > 10) return; // Spatial scaling: only broadcast within 10km radius
+          if (distance > 10) return;
         }
       }
       client.send(
@@ -270,6 +276,10 @@ wss.on("connection", async (ws: any) => {
       }
 
       if (data.type === "location_update") {
+        // Validate required fields
+        if (!data.user_id || typeof data.lat !== "number" || typeof data.lng !== "number") {
+          return; // Silently drop malformed messages
+        }
         const info: ClientInfo = {
           user_id: data.user_id,
           username: data.username,
@@ -311,7 +321,7 @@ wss.on("connection", async (ws: any) => {
           const lastTime = lastBroadcastTime.get(info.user_id) || 0;
           if (now - lastTime >= 2000) {
             lastBroadcastTime.set(info.user_id, now);
-            broadcastLocationUpdate(info);
+            broadcastLocationUpdate(info, ws);
           }
         }
 

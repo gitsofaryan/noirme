@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth, getAvatarUrl } from "@/hooks/useAuth";
-import { LogIn, LogOut, Loader2, Shield, X, Sparkles, Shuffle, Check, Info, Upload } from "lucide-react";
+import { LogIn, LogOut, Loader2, Shield, X, Sparkles, Shuffle, Check, Upload, ChevronRight } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -10,39 +10,42 @@ const INTEREST_TAGS = [
   "Skateboarding 🛹", "Alt Vinyls 🎵", "Heavy Lifting 🏋️", "Matcha Latte 🍵",
   "Visual Arts 🎨", "Midnight Ramen 🍜", "Lo-fi Beats 🎧", "Retro Gaming 👾",
   "Hackathon 💻", "Cycling 🚴", "Photography 📷", "Open Mic 🎤",
+  "Dating 💕", "Board Games 🎲", "Movie Night 🍿", "Cooking 🍳",
+  "Anime 🎌", "Night Drive 🌙", "Karaoke 🎤", "Road Trips 🚗",
 ];
 
 const EMOJI_OPTIONS = [
   "☕", "🎒", "🎸", "🍕", "💻", "📚", "🎨", "🛹",
   "🎧", "🍿", "🍵", "⚡", "✨", "🔥", "🎯", "🌙",
   "🎤", "📷", "🧋", "🍜", "🏋️", "🚴", "🎮", "🌿",
+  "💕", "🎲", "🎌", "🍳", "🚗", "🎬", "🏃", "🧘",
 ];
 
 const AVATAR_STYLES = [
-  { id: "adventurer", name: "Adventurer", author: "Lisa Wischofsky", license: "CC BY 4.0" },
-  { id: "adventurer-neutral", name: "Adventurer Neutral", author: "Lisa Wischofsky", license: "CC BY 4.0" },
-  { id: "avataaars", name: "Avataaars", author: "Pablo Stanley", license: "Free for Personal/Commercial" },
-  { id: "avataaars-neutral", name: "Avataaars Neutral", author: "Pablo Stanley", license: "Free for Personal/Commercial" },
-  { id: "big-ears", name: "Big Ears", author: "The Visual Team", license: "CC BY 4.0" },
-  { id: "big-ears-neutral", name: "Big Ears Neutral", author: "The Visual Team", license: "CC BY 4.0" },
-  { id: "big-smile", name: "Big Smile", author: "Ashley Seo", license: "CC BY 4.0" },
-  { id: "bottts", name: "Bottts", author: "Pablo Stanley", license: "Free for Personal/Commercial" },
-  { id: "bottts-neutral", name: "Bottts Neutral", author: "Pablo Stanley", license: "Free for Personal/Commercial" },
-  { id: "croodles", name: "Croodles", author: "vijay verma", license: "CC BY 4.0" },
-  { id: "croodles-neutral", name: "Croodles Neutral", author: "vijay verma", license: "CC BY 4.0" },
-  { id: "dylan", name: "Dylan", author: "Natalia Spivak", license: "CC BY 4.0" },
-  { id: "fun-emoji", name: "Fun Emoji", author: "Davis Uche", license: "CC BY 4.0" },
-  { id: "lorelei", name: "Lorelei", author: "Lisa Wischofsky", license: "CC0 1.0" },
-  { id: "lorelei-neutral", name: "Lorelei Neutral", author: "Lisa Wischofsky", license: "CC0 1.0" },
-  { id: "micah", name: "Micah", author: "Micah Lanier", license: "CC BY 4.0" },
-  { id: "miniavs", name: "Miniavs", author: "Webpixels", license: "CC BY 4.0" },
-  { id: "notionists", name: "Notionists", author: "Zoish", license: "CC0 1.0" },
-  { id: "notionists-neutral", name: "Notionists Neutral", author: "Zoish", license: "CC0 1.0" },
-  { id: "open-peeps", name: "Open Peeps", author: "Pablo Stanley", license: "CC0 1.0" },
-  { id: "personas", name: "Personas", author: "Draftbit", license: "CC BY 4.0" },
-  { id: "pixel-art", name: "Pixel Art", author: "DiceBear", license: "CC0 1.0" },
-  { id: "pixel-art-neutral", name: "Pixel Art Neutral", author: "DiceBear", license: "CC0 1.0" },
-  { id: "toon-head", name: "Toon Head", author: "Toon Head", license: "CC BY 4.0" }
+  { id: "adventurer", name: "Adventurer" },
+  { id: "adventurer-neutral", name: "Adventurer Neutral" },
+  { id: "avataaars", name: "Avataaars" },
+  { id: "avataaars-neutral", name: "Avataaars Neutral" },
+  { id: "big-ears", name: "Big Ears" },
+  { id: "big-ears-neutral", name: "Big Ears Neutral" },
+  { id: "big-smile", name: "Big Smile" },
+  { id: "bottts", name: "Bottts" },
+  { id: "bottts-neutral", name: "Bottts Neutral" },
+  { id: "croodles", name: "Croodles" },
+  { id: "croodles-neutral", name: "Croodles Neutral" },
+  { id: "dylan", name: "Dylan" },
+  { id: "fun-emoji", name: "Fun Emoji" },
+  { id: "lorelei", name: "Lorelei" },
+  { id: "lorelei-neutral", name: "Lorelei Neutral" },
+  { id: "micah", name: "Micah" },
+  { id: "miniavs", name: "Miniavs" },
+  { id: "notionists", name: "Notionists" },
+  { id: "notionists-neutral", name: "Notionists Neutral" },
+  { id: "open-peeps", name: "Open Peeps" },
+  { id: "personas", name: "Personas" },
+  { id: "pixel-art", name: "Pixel Art" },
+  { id: "pixel-art-neutral", name: "Pixel Art Neutral" },
+  { id: "toon-head", name: "Toon Head" },
 ];
 
 export default function ProfilePage() {
@@ -99,7 +102,6 @@ export default function ProfilePage() {
     }
   }, [showAvatarPicker, avatarUrl]);
 
-  // Derive URL to preview
   const previewAvatarUrl = uploadedImage || `https://api.dicebear.com/9.x/${tempStyle}/svg?seed=${encodeURIComponent(tempSeed)}`;
 
   const selectPresetSeed = (preset: "Felix" | "Aneka" | "Milo" | "Luna") => {
@@ -134,7 +136,6 @@ export default function ProfilePage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
@@ -142,25 +143,16 @@ export default function ProfilePage() {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         const maxDim = 200;
-
         let width = img.width;
         let height = img.height;
         if (width > height) {
-          if (width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          }
+          if (width > maxDim) { height = Math.round((height * maxDim) / width); width = maxDim; }
         } else {
-          if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
+          if (height > maxDim) { width = Math.round((width * maxDim) / height); height = maxDim; }
         }
-
         canvas.width = width;
         canvas.height = height;
         ctx?.drawImage(img, 0, 0, width, height);
-
         const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
         setUploadedImage(dataUrl);
       };
@@ -191,31 +183,12 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     setError(null);
-    if (!handle.trim()) {
-      setError("Display name is required.");
-      return;
-    }
-    if (!gender) {
-      setError("Gender is required.");
-      return;
-    }
-    if (age === "" || isNaN(Number(age)) || Number(age) <= 0) {
-      setError("Please enter a valid age.");
-      return;
-    }
+    if (!handle.trim()) { setError("Display name is required."); return; }
+    if (!gender) { setError("Gender is required."); return; }
+    if (age === "" || isNaN(Number(age)) || Number(age) <= 0) { setError("Please enter a valid age."); return; }
     setIsSaving(true);
     try {
-      await saveProfile({
-        handle,
-        bio,
-        vibeEmoji,
-        radarRange,
-        selectedTags,
-        maskLocation,
-        avatar_url: avatarUrl,
-        gender,
-        age: Number(age)
-      });
+      await saveProfile({ handle, bio, vibeEmoji, radarRange, selectedTags, maskLocation, avatar_url: avatarUrl, gender, age: Number(age) });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (e) {
@@ -228,13 +201,8 @@ export default function ProfilePage() {
 
   const toggleTag = (tag: string) =>
     setSelectedTags(prev =>
-      prev.includes(tag)
-        ? prev.filter(t => t !== tag)
-        : prev.length < 5 ? [...prev, tag] : prev
+      prev.includes(tag) ? prev.filter(t => t !== tag) : prev.length < 6 ? [...prev, tag] : prev
     );
-
-  const rerollAvatar = () =>
-    setAvatarUrl(getAvatarUrl(`${user?.username || "user"}-${Date.now()}`));
 
   // ─ Loading
   if (isLoading) {
@@ -273,7 +241,7 @@ export default function ProfilePage() {
           transition={{ delay: 0.2 }}
           className="text-sm text-zinc-400 mb-10 max-w-[240px] leading-relaxed"
         >
-          Discover people nearby for activities, hangouts, and spontaneous moments.
+          Discover people nearby for cafés, dating, gaming, movies, and spontaneous moments.
         </motion.p>
 
         <motion.button
@@ -297,175 +265,166 @@ export default function ProfilePage() {
 
   // ─ Signed-in profile
   return (
-    <div className="h-full overflow-y-auto bg-white text-zinc-900">
+    <div className="h-full overflow-y-auto bg-zinc-50 text-zinc-900 pb-4">
 
-      {/* Avatar Hero */}
-      <div className="px-5 pt-8 pb-6 border-b border-zinc-100 flex flex-col items-center">
-        {/* Avatar */}
-        <div className="relative mb-4 group cursor-pointer" onClick={() => setShowAvatarPicker(true)}>
-          <div className="w-24 h-24 rounded-full bg-white overflow-hidden border-2 border-zinc-200 shadow-sm transition-all group-hover:scale-[1.03] group-hover:border-zinc-300 relative">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-            ) : (
-              <span className="flex items-center justify-center w-full h-full text-3xl">{vibeEmoji}</span>
-            )}
-            {/* Edit overlay */}
-            <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center" />
+      {/* ═══════════════ HERO CARD ═══════════════ */}
+      <div className="bg-white mx-0 pt-8 pb-6 px-5 border-b border-zinc-100">
+        <div className="flex items-center gap-4">
+          {/* Avatar */}
+          <div className="relative shrink-0 group cursor-pointer" onClick={() => setShowAvatarPicker(true)}>
+            <div className="w-20 h-20 rounded-full bg-white overflow-hidden border-2 border-zinc-200 shadow-sm transition-all group-hover:scale-[1.03] relative">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+              ) : (
+                <span className="flex items-center justify-center w-full h-full text-2xl">{vibeEmoji}</span>
+              )}
+            </div>
+            {/* Vibe badge */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(v => !v); }}
+              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-zinc-200 shadow-sm flex items-center justify-center text-sm hover:bg-zinc-50 transition-colors z-10 active:scale-90"
+            >
+              {vibeEmoji}
+            </button>
           </div>
-          {/* Vibe badge */}
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(v => !v); }}
-            className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-white border border-zinc-200 shadow-sm flex items-center justify-center text-sm hover:bg-zinc-50 transition-colors z-10"
-          >
-            {vibeEmoji}
-          </button>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-bold text-zinc-900 truncate">{handle || user?.username}</h2>
+            <p className="text-xs text-zinc-400 mt-0.5">@{user?.username}</p>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setShowAvatarPicker(true)}
+                className="px-3 py-1.5 rounded-full bg-zinc-900 text-[10px] font-semibold text-white hover:bg-black transition-colors flex items-center gap-1 shadow-sm active:scale-95"
+              >
+                <Sparkles size={10} /> Edit Avatar
+              </button>
+              <button
+                onClick={signOut}
+                className="px-3 py-1.5 rounded-full bg-zinc-100 text-[10px] font-semibold text-zinc-500 hover:text-red-500 hover:bg-red-50 transition-colors flex items-center gap-1 active:scale-95"
+              >
+                <LogOut size={10} /> Sign out
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Emoji picker */}
         <AnimatePresence>
           {showEmojiPicker && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -4 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -4 }}
-              className="absolute mt-1 z-50 bg-white border border-zinc-200 rounded-2xl p-3 grid grid-cols-8 gap-0.5 shadow-xl top-36"
-            >
-              {EMOJI_OPTIONS.map(e => (
-                <button
-                  key={e}
-                  onClick={() => { setVibeEmoji(e); setShowEmojiPicker(false); }}
-                  className="w-8 h-8 text-base flex items-center justify-center rounded-xl hover:bg-zinc-100 transition-colors"
-                >
-                  {e}
-                </button>
-              ))}
-            </motion.div>
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowEmojiPicker(false)} />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                className="mt-3 z-50 bg-white border border-zinc-200 rounded-2xl p-3 grid grid-cols-8 gap-0.5 shadow-xl relative"
+              >
+                {EMOJI_OPTIONS.map(e => (
+                  <button
+                    key={e}
+                    onClick={() => { setVibeEmoji(e); setShowEmojiPicker(false); }}
+                    className="w-9 h-9 text-base flex items-center justify-center rounded-xl hover:bg-zinc-100 transition-colors active:scale-90"
+                  >
+                    {e}
+                  </button>
+                ))}
+              </motion.div>
+            </>
           )}
         </AnimatePresence>
+      </div>
 
-        <h2 className="text-xl font-bold text-zinc-900">{handle || user?.username}</h2>
-        <p className="text-xs text-zinc-400 mt-0.5">@{user?.username}</p>
+      {/* ═══════════════ PERSONAL INFO ═══════════════ */}
+      <div className="bg-white mx-3 mt-3 rounded-2xl border border-zinc-100 overflow-hidden">
+        <div className="px-4 py-3 border-b border-zinc-50">
+          <h3 className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Personal Info</h3>
+        </div>
 
-        <div className="flex gap-2 mt-4">
-          <button
-            onClick={() => setShowAvatarPicker(true)}
-            className="px-4 py-1.5 rounded-full bg-zinc-900 text-[11px] font-semibold text-white hover:bg-black transition-colors flex items-center gap-1.5 shadow-sm"
-          >
-            <Sparkles size={11} className="text-zinc-300" /> Customize Avatar
-          </button>
-          <button
-            onClick={signOut}
-            className="px-4 py-1.5 rounded-full bg-zinc-100 text-[11px] font-semibold text-zinc-600 hover:text-red-500 hover:bg-red-50 transition-colors flex items-center gap-1"
-          >
-            <LogOut size={10} /> Sign out
-          </button>
+        <div className="divide-y divide-zinc-50">
+          {/* Display Name */}
+          <div className="px-4 py-3">
+            <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1.5">Display Name</label>
+            <input
+              type="text"
+              value={handle}
+              onChange={e => setHandle(e.target.value)}
+              placeholder="e.g. Skyler ⚡"
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3.5 py-2.5 text-sm font-medium text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
+            />
+          </div>
+
+          {/* Age & Gender row */}
+          <div className="px-4 py-3 flex gap-3">
+            <div className="w-24 shrink-0">
+              <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1.5">Age *</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={age}
+                onChange={e => { const val = e.target.value; setAge(val === "" ? "" : parseInt(val)); }}
+                placeholder="21"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3.5 py-2.5 text-sm font-medium text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1.5">Gender *</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(["Male", "Female", "Non-binary", "Prefer not to say"] as const).map(option => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setGender(option)}
+                    className={`px-3 py-2 rounded-xl border text-[10px] font-semibold transition-all active:scale-95 ${
+                      gender === option
+                        ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                        : "bg-zinc-50 border-zinc-200 text-zinc-500 hover:border-zinc-300"
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Tagline */}
+          <div className="px-4 py-3">
+            <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1.5">Tagline</label>
+            <div className="relative">
+              <textarea
+                value={bio}
+                onChange={e => setBio(e.target.value.slice(0, 150))}
+                placeholder="Late night ramen, vinyl records, and strong espresso."
+                rows={2}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors resize-none leading-relaxed"
+              />
+              <span className="absolute bottom-2 right-3 text-[9px] text-zinc-400 font-semibold">{bio.length}/150</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Form body */}
-      <div className="px-5 py-5 space-y-6">
-
-        {/* Handle */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Display Name</label>
-          <input
-            type="text"
-            value={handle}
-            onChange={e => setHandle(e.target.value)}
-            placeholder="e.g. Skyler ⚡"
-            className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm font-medium text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
-          />
+      {/* ═══════════════ INTERESTS ═══════════════ */}
+      <div className="bg-white mx-3 mt-3 rounded-2xl border border-zinc-100 overflow-hidden">
+        <div className="px-4 py-3 border-b border-zinc-50 flex justify-between items-center">
+          <h3 className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Interests</h3>
+          <span className="text-[10px] font-bold text-zinc-400">{selectedTags.length}/6</span>
         </div>
-
-        {/* Age */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Age *</label>
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={age}
-            onChange={e => {
-              const val = e.target.value;
-              setAge(val === "" ? "" : parseInt(val));
-            }}
-            placeholder="e.g. 21"
-            className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm font-medium text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors"
-          />
-        </div>
-
-        {/* Gender */}
-        <div className="space-y-2.5">
-          <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Gender *</label>
-          <div className="flex flex-wrap gap-2">
-            {(["Male", "Female", "Non-binary", "Prefer not to say"] as const).map(option => {
-              const active = gender === option;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setGender(option)}
-                  className={`px-4 py-2.5 rounded-xl border text-xs font-semibold transition-all duration-150 ${active
-                      ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
-                      : "bg-zinc-50 border-zinc-200/80 text-zinc-550 hover:border-zinc-300"
-                    }`}
-                >
-                  {option}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Bio */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Tagline</label>
-          <div className="relative">
-            <textarea
-              value={bio}
-              onChange={e => setBio(e.target.value.slice(0, 150))}
-              placeholder="Late night ramen, vinyl records, and strong espresso."
-              rows={3}
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors resize-none leading-relaxed"
-            />
-            <span className="absolute bottom-2.5 right-3 text-[9px] text-zinc-400 font-semibold">{bio.length}/150</span>
-          </div>
-        </div>
-
-        {/* Radar range */}
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Discovery Radius</label>
-            <span className="text-sm font-bold text-zinc-900">{radarRange} km</span>
-          </div>
-          <input
-            type="range" min="0.5" max="10" step="0.5"
-            value={radarRange}
-            onChange={e => setRadarRange(parseFloat(e.target.value))}
-            className="w-full h-1.5 rounded-full cursor-pointer accent-zinc-900 bg-zinc-200"
-          />
-          <p className="text-[10px] text-zinc-400 leading-relaxed">
-            Shows activity within this radius on the live map.
-          </p>
-        </div>
-
-        {/* Interest Tags */}
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Interests</label>
-            <span className="text-[10px] font-semibold text-zinc-400">{selectedTags.length}/5</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
+        <div className="px-4 py-3">
+          <div className="flex flex-wrap gap-1.5">
             {INTEREST_TAGS.map(tag => {
               const active = selectedTags.includes(tag);
               return (
                 <button
                   key={tag}
                   onClick={() => toggleTag(tag)}
-                  className={`px-3 py-1.5 rounded-full border text-[11px] font-semibold transition-all duration-150 ${active
+                  className={`px-2.5 py-1.5 rounded-full border text-[10px] font-semibold transition-all active:scale-95 ${
+                    active
                       ? "bg-zinc-900 border-zinc-900 text-white"
                       : "bg-white border-zinc-200 text-zinc-500 hover:border-zinc-400"
-                    }`}
+                  }`}
                 >
                   {tag}
                 </button>
@@ -473,17 +432,41 @@ export default function ProfilePage() {
             })}
           </div>
         </div>
+      </div>
 
-        {/* Location Masking Toggle */}
-        <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4 flex items-start justify-between gap-3">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900">
-              <Shield size={13} className="text-zinc-500 shrink-0" />
-              Location Masking
+      {/* ═══════════════ DISCOVERY ═══════════════ */}
+      <div className="bg-white mx-3 mt-3 rounded-2xl border border-zinc-100 overflow-hidden">
+        <div className="px-4 py-3 border-b border-zinc-50">
+          <h3 className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Discovery</h3>
+        </div>
+
+        {/* Radar range */}
+        <div className="px-4 py-3 border-b border-zinc-50">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-semibold text-zinc-700">Radar Range</span>
+            <span className="text-xs font-bold text-zinc-900 bg-zinc-100 px-2 py-0.5 rounded-full">{radarRange} km</span>
+          </div>
+          <input
+            type="range" min="0.5" max="10" step="0.5"
+            value={radarRange}
+            onChange={e => setRadarRange(parseFloat(e.target.value))}
+            className="w-full h-1.5 rounded-full cursor-pointer accent-zinc-900 bg-zinc-200"
+          />
+          <p className="text-[10px] text-zinc-400 mt-1.5">
+            Shows nearby activity within this radius.
+          </p>
+        </div>
+
+        {/* Location Masking */}
+        <div className="px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-zinc-100 flex items-center justify-center shrink-0">
+              <Shield size={14} className="text-zinc-500" />
             </div>
-            <p className="text-[10px] text-zinc-400 leading-relaxed">
-              Applies a ±100–200m offset so your exact location stays private.
-            </p>
+            <div>
+              <p className="text-xs font-semibold text-zinc-800">Location Masking</p>
+              <p className="text-[9px] text-zinc-400 leading-relaxed">±100–200m privacy offset</p>
+            </div>
           </div>
           <button
             onClick={() => setMaskLocation(!maskLocation)}
@@ -492,75 +475,80 @@ export default function ProfilePage() {
             <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${maskLocation ? "translate-x-5" : "translate-x-0"}`} />
           </button>
         </div>
-
-        {/* Blocked Users Section */}
-        {profile?.blockedUsers && profile.blockedUsers.length > 0 && (
-          <div className="space-y-3">
-            <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Blocked Users</label>
-            <div className="space-y-2">
-              {profile.blockedUsers.map((id) => (
-                <div key={id} className="flex items-center justify-between bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5">
-                  <span className="text-xs font-medium text-zinc-600">ID: {id}</span>
-                  <button
-                    onClick={() => unblockUser(id)}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700"
-                  >
-                    Unblock
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Save */}
-        <div className="space-y-2">
-          {error && (
-            <p className="text-xs text-red-500 font-semibold text-center">{error}</p>
-          )}
-          <motion.button
-            whileTap={{ scale: 0.98 }}
-            onClick={handleSave}
-            disabled={isSaving}
-            className={`w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${saveSuccess ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white hover:bg-black"
-              } disabled:opacity-50`}
-          >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : saveSuccess ? (
-              "✓ Saved!"
-            ) : (
-              "Save Profile"
-            )}
-          </motion.button>
-        </div>
-
-        {/* Bottom padding for safe area */}
-        <div className="h-2" />
       </div>
 
-      {/* Avatar Picker Modal */}
+      {/* ═══════════════ BLOCKED USERS ═══════════════ */}
+      {profile?.blockedUsers && profile.blockedUsers.length > 0 && (
+        <div className="bg-white mx-3 mt-3 rounded-2xl border border-zinc-100 overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-50">
+            <h3 className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Blocked Users</h3>
+          </div>
+          <div className="divide-y divide-zinc-50">
+            {profile.blockedUsers.map((id) => (
+              <div key={id} className="flex items-center justify-between px-4 py-2.5">
+                <span className="text-xs font-medium text-zinc-600 truncate">ID: {id}</span>
+                <button
+                  onClick={() => unblockUser(id)}
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-700 shrink-0 active:scale-95"
+                >
+                  Unblock
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ SAVE BUTTON ═══════════════ */}
+      <div className="mx-3 mt-4 mb-6">
+        {error && (
+          <p className="text-xs text-red-500 font-semibold text-center mb-2">{error}</p>
+        )}
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          onClick={handleSave}
+          disabled={isSaving}
+          className={`w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm ${
+            saveSuccess ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white hover:bg-black"
+          } disabled:opacity-50`}
+        >
+          {isSaving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : saveSuccess ? (
+            "✓ Saved!"
+          ) : (
+            "Save Profile"
+          )}
+        </motion.button>
+      </div>
+
+      {/* ═══════════════ AVATAR PICKER MODAL ═══════════════ */}
       <AnimatePresence>
         {showAvatarPicker && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4 select-none"
+            className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm select-none"
             onClick={e => { if (e.target === e.currentTarget) setShowAvatarPicker(false); }}
           >
             <motion.div
-              initial={{ scale: 0.95, y: 15 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 15 }}
-              transition={{ type: "spring", stiffness: 350, damping: 28 }}
-              className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", stiffness: 350, damping: 35 }}
+              className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
             >
+              {/* Handle */}
+              <div className="flex justify-center pt-3 pb-1 sm:hidden">
+                <div className="w-10 h-1 rounded-full bg-zinc-200" />
+              </div>
+
               {/* Header */}
-              <div className="px-5 pt-5 pb-3 border-b border-zinc-100 flex justify-between items-center">
+              <div className="px-5 pt-3 pb-3 border-b border-zinc-100 flex justify-between items-center">
                 <div>
                   <h3 className="text-base font-bold text-zinc-900">Customize Avatar</h3>
-                  <p className="text-[10px] text-zinc-400 font-medium">Create your look with transparent SVGs</p>
+                  <p className="text-[10px] text-zinc-400 font-medium">Choose a style or upload your own</p>
                 </div>
                 <button
                   onClick={() => setShowAvatarPicker(false)}
@@ -576,88 +564,70 @@ export default function ProfilePage() {
                 {/* Big Preview */}
                 <div className="flex flex-col items-center">
                   <div
-                    className="w-28 h-28 rounded-2xl border border-zinc-200 shadow-inner overflow-hidden flex items-center justify-center relative group"
+                    className="w-24 h-24 rounded-2xl border border-zinc-200 shadow-inner overflow-hidden flex items-center justify-center relative"
                     style={{
                       backgroundImage: 'conic-gradient(#f4f4f5 25%, white 0 50%, #f4f4f5 0 75%, white 0)',
                       backgroundSize: '16px 16px'
                     }}
                   >
-                    <img
-                      src={previewAvatarUrl}
-                      alt="Avatar Preview"
-                      className="w-24 h-24 object-contain transition-transform group-hover:scale-110"
-                    />
+                    <img src={previewAvatarUrl} alt="Preview" className="w-20 h-20 object-contain" />
                   </div>
-                  <span className="text-[9px] text-zinc-400 mt-2 font-medium tracking-wide bg-zinc-50 px-2 py-0.5 rounded-full border border-zinc-100">
-                    {uploadedImage ? "Uploaded Custom Image" : "Transparent Background"}
+                  <span className="text-[9px] text-zinc-400 mt-1.5 font-medium bg-zinc-50 px-2 py-0.5 rounded-full border border-zinc-100">
+                    {uploadedImage ? "Custom Image" : "Transparent SVG"}
                   </span>
 
                   <button
                     type="button"
                     onClick={triggerFileInput}
-                    className="mt-3 px-3 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 transition-all text-[11px] font-semibold text-zinc-700 flex items-center gap-1.5 shadow-sm active:scale-95"
+                    className="mt-2.5 px-3 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 transition-all text-[11px] font-semibold text-zinc-700 flex items-center gap-1.5 shadow-sm active:scale-95"
                   >
                     <Upload size={12} className="text-zinc-500" />
-                    Upload from Device
+                    Upload Photo
                   </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="image/*"
-                    className="hidden"
-                  />
+                  <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
                 </div>
 
-                {/* Seed / Character Selection */}
+                {/* Seed Selection */}
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Select Character</label>
+                  <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Character</label>
                   <div className="flex flex-wrap gap-1.5">
-                    {(["Felix", "Aneka", "Milo", "Luna"] as const).map(preset => {
-                      const isActive = activeSeedType === preset;
-                      return (
-                        <button
-                          key={preset}
-                          onClick={() => selectPresetSeed(preset)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${isActive
-                              ? "bg-zinc-900 border-zinc-900 text-white"
-                              : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                            }`}
-                        >
-                          {preset}
-                        </button>
-                      );
-                    })}
+                    {(["Felix", "Aneka", "Milo", "Luna"] as const).map(preset => (
+                      <button
+                        key={preset}
+                        onClick={() => selectPresetSeed(preset)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all active:scale-95 ${
+                          activeSeedType === preset
+                            ? "bg-zinc-900 border-zinc-900 text-white"
+                            : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
                     <button
-                      onClick={() => {
-                        setActiveSeedType("custom");
-                        setTempSeed(customSeedText.trim() || user?.username || "user");
-                      }}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeSeedType === "custom"
+                      onClick={() => { setActiveSeedType("custom"); setTempSeed(customSeedText.trim() || user?.username || "user"); }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all active:scale-95 ${
+                        activeSeedType === "custom"
                           ? "bg-zinc-900 border-zinc-900 text-white"
                           : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                        }`}
+                      }`}
                     >
-                      Custom Seed
+                      Custom
                     </button>
                   </div>
 
                   {activeSeedType === "custom" && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex gap-2 mt-2"
-                    >
+                    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2 mt-2">
                       <input
                         type="text"
                         value={customSeedText}
                         onChange={e => handleCustomSeedChange(e.target.value)}
-                        placeholder="Type any custom seed..."
+                        placeholder="Type any seed..."
                         className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs font-medium text-zinc-900 focus:outline-none focus:border-zinc-400 transition-colors"
                       />
                       <button
                         onClick={randomizeCustomSeed}
-                        className="px-3 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-50 transition-colors flex items-center gap-1 text-xs font-semibold shrink-0"
+                        className="px-3 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-50 transition-colors flex items-center gap-1 text-xs font-semibold shrink-0 active:scale-95"
                       >
                         <Shuffle size={12} /> Random
                       </button>
@@ -665,10 +635,10 @@ export default function ProfilePage() {
                   )}
                 </div>
 
-                {/* Style Selection */}
+                {/* Style Grid */}
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Choose Style ({AVATAR_STYLES.length})</label>
-                  <div className="grid grid-cols-2 gap-2 overflow-y-auto max-h-[220px] pr-1 scrollbar-none">
+                  <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Style ({AVATAR_STYLES.length})</label>
+                  <div className="grid grid-cols-3 gap-2 overflow-y-auto max-h-[200px] pr-1 scrollbar-none">
                     {AVATAR_STYLES.map(style => {
                       const isActive = !uploadedImage && tempStyle === style.id;
                       const stylePreviewUrl = `https://api.dicebear.com/9.x/${style.id}/svg?seed=${encodeURIComponent(tempSeed)}`;
@@ -676,41 +646,36 @@ export default function ProfilePage() {
                         <button
                           key={style.id}
                           onClick={() => handleStyleChange(style.id)}
-                          className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${isActive
+                          className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all active:scale-95 ${
+                            isActive
                               ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
                               : "bg-zinc-50 border-zinc-200/60 text-zinc-700 hover:border-zinc-300"
-                            }`}
+                          }`}
                         >
-                          <div className="w-10 h-10 rounded-lg bg-white border border-zinc-200/50 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-lg bg-white border border-zinc-200/50 overflow-hidden flex items-center justify-center">
                             <img src={stylePreviewUrl} alt={style.name} className="w-8 h-8 object-contain" />
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-[10px] font-bold truncate leading-tight">{style.name}</p>
-                            <p className={`text-[8px] truncate mt-0.5 ${isActive ? "text-zinc-300" : "text-zinc-400"}`}>
-                              {style.author}
-                            </p>
-                          </div>
+                          <p className="text-[8px] font-bold truncate w-full text-center leading-tight">{style.name}</p>
                         </button>
                       );
                     })}
                   </div>
                 </div>
-
               </div>
 
-              {/* Actions Footer */}
+              {/* Footer */}
               <div className="px-5 py-4 border-t border-zinc-100 flex gap-3 bg-zinc-50">
                 <button
                   onClick={() => setShowAvatarPicker(false)}
-                  className="flex-1 py-3 rounded-xl bg-white border border-zinc-200 text-zinc-600 font-semibold text-xs hover:bg-zinc-50 transition-colors"
+                  className="flex-1 py-3 rounded-xl bg-white border border-zinc-200 text-zinc-600 font-semibold text-xs hover:bg-zinc-50 transition-colors active:scale-95"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={applyAvatar}
-                  className="flex-1 py-3 rounded-xl bg-zinc-900 text-white font-bold text-xs hover:bg-black transition-colors flex items-center justify-center gap-1"
+                  className="flex-1 py-3 rounded-xl bg-zinc-900 text-white font-bold text-xs hover:bg-black transition-colors flex items-center justify-center gap-1 active:scale-95"
                 >
-                  <Check size={12} /> Apply Changes
+                  <Check size={12} /> Apply
                 </button>
               </div>
             </motion.div>
