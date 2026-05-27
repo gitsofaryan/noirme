@@ -253,27 +253,30 @@ function matchesFilter(intent: any, key: string): boolean {
 
 async function getIPLocation(): Promise<{ lat: number; lng: number }> {
   try {
-    const res = await fetch("https://ipapi.co/json/");
-    if (!res.ok) throw new Error("ipapi failed");
-    const data = await res.json();
-    if (data.latitude && data.longitude) {
-      return { lat: data.latitude, lng: data.longitude };
-    }
-    throw new Error("Invalid lat/lng");
-  } catch (e) {
-    try {
-      const res = await fetch("https://ipinfo.io/json");
-      if (!res.ok) throw new Error("ipinfo failed");
+    const res = await fetch("https://freeipapi.com/api/json");
+    if (res.ok) {
       const data = await res.json();
-      if (data.loc) {
-        const [latStr, lngStr] = data.loc.split(",");
-        return { lat: parseFloat(latStr), lng: parseFloat(lngStr) };
+      if (typeof data.latitude === "number" && typeof data.longitude === "number") {
+        return { lat: data.latitude, lng: data.longitude };
       }
-    } catch (err) {
-      console.warn("All IP Geo failed", err);
     }
-    throw new Error("IP geolocation failed completely");
+  } catch (err) {
+    // Try backup
   }
+
+  try {
+    const res = await fetch("https://ipwho.is/");
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.latitude === "number" && typeof data.longitude === "number") {
+        return { lat: data.latitude, lng: data.longitude };
+      }
+    }
+  } catch (err) {
+    // Silent fallback
+  }
+
+  return { lat: 28.6139, lng: 77.209 };
 }
 
 export default function LiveMap() {
