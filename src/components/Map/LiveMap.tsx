@@ -279,7 +279,7 @@ async function getIPLocation(): Promise<{ lat: number; lng: number }> {
 export default function LiveMap() {
   const { isSignedIn, user, profile, isLoading } = useAuth();
 
-  const [location, setLocation] = useState<{ lat: number; lng: number }>(FALLBACK);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locStatus, setLocStatus] = useState<"waiting" | "granted" | "denied">("waiting");
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [intents, setIntents] = useState<any[]>([]);
@@ -317,10 +317,20 @@ export default function LiveMap() {
   useEffect(() => {
     let finished = false;
 
+    // Safety fallback timeout to prevent hanging if geolocation fails completely
+    const fallbackTimeout = setTimeout(() => {
+      if (!finished) {
+        finished = true;
+        setLocation(FALLBACK);
+        setLocStatus("denied");
+      }
+    }, 2000);
+
     // Fast IP Geolocation fallback so map is never collapsed
     getIPLocation()
       .then((ipLoc) => {
         if (!finished) {
+          clearTimeout(fallbackTimeout);
           const offset = maskLocation ? 0.0018 : 0;
           setLocation({
             lat: ipLoc.lat + (Math.random() - 0.5) * offset,
@@ -340,6 +350,7 @@ export default function LiveMap() {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         finished = true;
+        clearTimeout(fallbackTimeout);
         const offset = maskLocation ? 0.0018 : 0;
         setLocation({
           lat: pos.coords.latitude + (Math.random() - 0.5) * offset,
@@ -348,14 +359,14 @@ export default function LiveMap() {
         setLocStatus("granted");
       },
       () => {
-        finished = true;
-        // Don't override if IP geolocation already succeeded
-        setLocStatus((prev) => (prev === "granted" ? "granted" : "denied"));
+        // Let IP geolocation or safety timeout handle the fallback
+        console.warn("Watch position error");
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
     return () => {
+      clearTimeout(fallbackTimeout);
       navigator.geolocation.clearWatch(watchId);
     };
   }, [maskLocation]);
@@ -714,6 +725,14 @@ export default function LiveMap() {
   const isHost = selectedHotspot?.host_id === myUserId;
   const myRequest = selectedHotspot?.requests?.find((r: any) => r.user_id === myUserId);
   const guestStatus = myRequest ? myRequest.status : "none"; // 'pending' | 'accepted' | 'declined' | 'none'
+
+  if (!location) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-[#FDFDFD]">
+        {/* Render nothing - the global loader will cover the screen */}
+      </div>
+    );
+  }
 
   // Distance computation for the open drawer
   const distance = selectedHotspot
