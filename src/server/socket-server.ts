@@ -234,8 +234,11 @@ function broadcastLocationUpdate(data: ClientInfo) {
       if (recipientInfo) {
         const iBlockedU = (data.blockedUsers || []).includes(recipientInfo.user_id);
         const uBlockedMe = (recipientInfo.blockedUsers || []).includes(data.user_id);
-        if (iBlockedU || uBlockedMe) {
-          return;
+        if (iBlockedU || uBlockedMe) return;
+
+        if (recipientInfo.lat && recipientInfo.lng && data.lat && data.lng) {
+          const distance = getDistanceKm(recipientInfo.lat, recipientInfo.lng, data.lat, data.lng);
+          if (distance > 10) return; // Spatial scaling: only broadcast within 10km radius
         }
       }
       client.send(
@@ -617,6 +620,28 @@ wss.on("connection", async (ws: any) => {
               const cs = findLocalSocketByUserId(uid);
               if (cs) cs.send(JSON.stringify({ type: "room_sync", roomId, hotspot }));
             });
+          }
+        }
+      } else if (data.type === "send_wave") {
+        const { target_user_id, sender_id, sender_username } = data;
+        if (useRedis && redisPub) {
+          await redisPub.publish(
+            "noirme:direct_notifications",
+            JSON.stringify({
+              target_user_id,
+              payload: {
+                type: "wave_received",
+                sender_id,
+                sender_username,
+              },
+            })
+          );
+        } else {
+          const targetSocket = findLocalSocketByUserId(target_user_id);
+          if (targetSocket) {
+            targetSocket.send(
+              JSON.stringify({ type: "wave_received", sender_id, sender_username })
+            );
           }
         }
       }

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import MarkerClusterGroup from "react-leaflet-cluster";
 import { useAuth, getAvatarUrl } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -113,7 +114,7 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): 
 }
 
 // Creates a circular avatar marker using an img element
-function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: boolean, userId: string = "default") {
+function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: boolean, userId: string = "default", isWaving: boolean = false) {
   // Use a simple hash of the userId to pick a consistent color for that user
   const colorIndex = Math.abs(userId.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % MARKER_COLORS.length;
   const randomColor = MARKER_COLORS[colorIndex];
@@ -150,6 +151,26 @@ function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: bool
           font-size:10px;
           box-shadow: 0 1px 4px rgba(0,0,0,0.1);
         ">${vibeEmoji}</div>
+        ${isWaving ? `
+        <div style="
+          position:absolute; top:-16px; right:-16px;
+          font-size: 24px;
+          animation: noirme-wave-anim 1.2s infinite;
+          transform-origin: bottom right;
+          z-index: 10;
+          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        ">👋</div>
+        <style>
+          @keyframes noirme-wave-anim {
+            0% { transform: rotate(0deg); }
+            20% { transform: rotate(-20deg); }
+            40% { transform: rotate(10deg); }
+            60% { transform: rotate(-10deg); }
+            80% { transform: rotate(5deg); }
+            100% { transform: rotate(0deg); }
+          }
+        </style>
+        ` : ""}
       </div>
     `,
     iconSize: [44, 44],
@@ -251,7 +272,7 @@ function matchesFilter(intent: any, key: string): boolean {
   return true;
 }
 
-async function getIPLocation(): Promise<{ lat: number; lng: number }> {
+async function getIPLocation(): Promise<{ lat: number; lng: number } | null> {
   try {
     const res = await fetch("https://freeipapi.com/api/json");
     if (res.ok) {
@@ -276,7 +297,7 @@ async function getIPLocation(): Promise<{ lat: number; lng: number }> {
     // Silent fallback
   }
 
-  return { lat: 28.6139, lng: 77.209 };
+  return null;
 }
 
 export default function LiveMap() {
@@ -291,10 +312,46 @@ export default function LiveMap() {
   const [hasWaved, setHasWaved] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
 
+  const [activeWaves, setActiveWaves] = useState<{ sender_id: string; expires_at: number }[]>([]);
+  const [toasts, setToasts] = useState<{ id: string; message: string; type: "default" | "wave" }[]>([]);
+
+  const addToast = (message: string, type: "default" | "wave" = "default") => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  };
+
   useEffect(() => {
     setHasWaved(false);
     setConfirmBlock(false);
   }, [selectedUser]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setActiveWaves((prev) => prev.filter((w) => w.expires_at > now));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleWave = () => {
+    if (!selectedUser) return;
+    setHasWaved(true);
+    addToast(`You waved at ${selectedUser.username}`);
+    const ws = socketRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: "send_wave",
+          target_user_id: selectedUser.user_id,
+          sender_id: myUserId,
+          sender_username: handle,
+        })
+      );
+    }
+  };
 
   const handleBlock = async (userId: string) => {
     await blockUser(userId);
@@ -312,7 +369,7 @@ export default function LiveMap() {
     return locationOffsetRef.current;
   };
 
-  const [location, setLocation] = useState<{ lat: number; lng: number }>(() => {
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(() => {
     if (typeof window !== "undefined") {
       const cached = localStorage.getItem("noirme_last_location");
       if (cached) {
@@ -326,15 +383,15 @@ export default function LiveMap() {
         }
       }
     }
-    return FALLBACK;
+    return null;
   });
 
   // Save successfully retrieved location to cache
   useEffect(() => {
-    if (location && (location.lat !== FALLBACK.lat || location.lng !== FALLBACK.lng)) {
+    if (location && location.lat && location.lng) {
       localStorage.setItem("noirme_last_location", JSON.stringify(location));
     }
-  }, [location.lat, location.lng]);
+  }, [location?.lat, location?.lng]);
 
   const [locStatus, setLocStatus] = useState<"waiting" | "granted" | "denied">("waiting");
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
@@ -400,16 +457,14 @@ export default function LiveMap() {
     let finished = false;
 
     // Fast IP Geolocation fallback so map is never collapsed
-    getIPLocation()
+      getIPLocation()
       .then((ipLoc) => {
-        if (!finished) {
+        if (!finished && ipLoc) {
           const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
           const newLat = ipLoc.lat + offset.latOffset;
           const newLng = ipLoc.lng + offset.lngOffset;
           setLocation((prev) => {
-            if (prev.lat === FALLBACK.lat && prev.lng === FALLBACK.lng) {
-              return { lat: newLat, lng: newLng };
-            }
+            if (!prev) return { lat: newLat, lng: newLng };
             const dist = getDistanceKm(prev.lat, prev.lng, newLat, newLng);
             if (dist > 0.003) {
               return { lat: newLat, lng: newLng };
@@ -450,9 +505,7 @@ export default function LiveMap() {
         const newLng = pos.coords.longitude + offset.lngOffset;
 
         setLocation((prev) => {
-          if (prev.lat === FALLBACK.lat && prev.lng === FALLBACK.lng) {
-            return { lat: newLat, lng: newLng };
-          }
+          if (!prev) return { lat: newLat, lng: newLng };
           const dist = getDistanceKm(prev.lat, prev.lng, newLat, newLng);
           // Update only if moved more than 3 meters (0.003 km) to filter out GPS drift
           if (dist > 0.003) {
@@ -573,6 +626,12 @@ export default function LiveMap() {
                 };
               });
             }
+          } else if (msg.type === "wave_received") {
+            addToast(`👋 ${msg.sender_username} waved at you!`, "wave");
+            setActiveWaves((prev) => [
+              ...prev.filter((w) => w.sender_id !== msg.sender_id),
+              { sender_id: msg.sender_id, expires_at: Date.now() + 10000 },
+            ]);
           } else if (msg.type === "user_disconnected") {
             setActiveUsers((prev) => prev.filter((u) => u.user_id !== msg.user_id));
           }
@@ -754,7 +813,7 @@ export default function LiveMap() {
     // 2. Fetch fast IP location
     getIPLocation()
       .then((ipLoc) => {
-        if (!finished) {
+        if (!finished && ipLoc) {
           const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
           const newCoords = {
             lat: ipLoc.lat + offset.latOffset,
@@ -798,6 +857,22 @@ export default function LiveMap() {
       }
     }
   };
+
+  if (!location) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-50 z-[9999]">
+        <motion.div
+          animate={{ scale: [1, 1.1, 1] }}
+          transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+          className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center border-4 border-zinc-100 mb-6"
+        >
+          <Compass className="w-8 h-8 text-black animate-[spin_3s_linear_infinite]" />
+        </motion.div>
+        <h2 className="text-xl font-bold text-zinc-900 tracking-tight">Locating you...</h2>
+        <p className="text-sm font-semibold text-zinc-500 mt-2">Finding nearby users</p>
+      </div>
+    );
+  }
 
   // Filter nearby users (within 10km)
   const filteredUsers = activeUsers.filter((u) => {
@@ -851,61 +926,70 @@ export default function LiveMap() {
           setFollowUser={setFollowUser}
         />
 
-        {/* Me */}
-        <Marker
-          position={[location.lat, location.lng]}
-          icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, user?.id || "me")}
+        {/* Marker Cluster Group handles all user/hotspot clustering automatically */}
+        <MarkerClusterGroup
+          chunkedLoading
+          maxClusterRadius={40}
+          showCoverageOnHover={false}
+          spiderfyOnMaxZoom={true}
         >
-          <Popup>
-            <div className="flex items-center gap-2.5 p-2.5 pr-7 bg-white">
-              <img
-                src={myAvatarUrl}
-                className="w-9 h-9 rounded-full object-cover bg-zinc-50 border border-zinc-100"
-                alt="you"
-              />
-              <div>
-                <p className="font-bold text-xs text-zinc-900">{handle}</p>
-                <p className="text-[10px] text-zinc-400 flex items-center gap-1 mt-0.5">
-                  <Shield size={9} /> {maskLocation ? "Location masked" : "Exact location"}
-                </p>
+          {/* Me */}
+          <Marker
+            position={[location.lat, location.lng]}
+            icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, user?.id || "me")}
+          >
+            <Popup>
+              <div className="flex items-center gap-2.5 p-2.5 pr-7 bg-white">
+                <img
+                  src={myAvatarUrl}
+                  className="w-9 h-9 rounded-full object-cover bg-zinc-50 border border-zinc-100"
+                  alt="you"
+                />
+                <div>
+                  <p className="font-bold text-xs text-zinc-900">{handle}</p>
+                  <p className="text-[10px] text-zinc-400 flex items-center gap-1 mt-0.5">
+                    <Shield size={9} /> {maskLocation ? "Location masked" : "Exact location"}
+                  </p>
+                </div>
               </div>
-            </div>
-          </Popup>
-        </Marker>
+            </Popup>
+          </Marker>
 
-        {/* Nearby Users */}
-        {filteredUsers.map((u, idx) => {
-          const av = u.avatar_url || getAvatarUrl(u.username || "user");
-          return (
-            <Marker
-              key={u.user_id || idx}
-              position={[u.lat, u.lng]}
-              icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, u.user_id)}
-              eventHandlers={{
-                click: () => {
-                  setSelectedUser(u);
-                },
-              }}
-            />
-          );
-        })}
+          {/* Nearby Users */}
+          {filteredUsers.map((u, idx) => {
+            const av = u.avatar_url || getAvatarUrl(u.username || "user");
+            const isWaving = activeWaves.some((w) => w.sender_id === u.user_id);
+            return (
+              <Marker
+                key={u.user_id || idx}
+                position={[u.lat, u.lng]}
+                icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, u.user_id, isWaving)}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedUser(u);
+                  },
+                }}
+              />
+            );
+          })}
 
-        {/* Hotspots */}
-        {filteredHotspots.map((hotspot) => {
-          const av = hotspot.host_avatar || getAvatarUrl(hotspot.host_username);
-          return (
-            <Marker
-              key={hotspot.id}
-              position={[hotspot.lat, hotspot.lng]}
-              icon={createHotspotMarkerIcon(av, hotspot.vibeEmoji || "☕")}
-              eventHandlers={{
-                click: () => {
-                  setSelectedHotspot(hotspot);
-                },
-              }}
-            />
-          );
-        })}
+          {/* Hotspots */}
+          {filteredHotspots.map((hotspot) => {
+            const av = hotspot.host_avatar || getAvatarUrl(hotspot.host_username);
+            return (
+              <Marker
+                key={hotspot.id}
+                position={[hotspot.lat, hotspot.lng]}
+                icon={createHotspotMarkerIcon(av, hotspot.vibeEmoji || "☕")}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedHotspot(hotspot);
+                  },
+                }}
+              />
+            );
+          })}
+        </MarkerClusterGroup>
       </MapContainer>
 
       {/* ─── OVERLAYS ─── */}
@@ -1462,7 +1546,7 @@ export default function LiveMap() {
                 </button>
 
                 <button
-                  onClick={() => setHasWaved(true)}
+                  onClick={handleWave}
                   disabled={hasWaved}
                   className={`flex-1 py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                     hasWaved 
@@ -1477,6 +1561,25 @@ export default function LiveMap() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* TOASTS CONTAINER */}
+      <div className="fixed top-20 left-0 right-0 z-[1000] flex flex-col items-center gap-2 pointer-events-none px-4">
+        <AnimatePresence>
+          {toasts.map((toast) => (
+            <motion.div
+              key={toast.id}
+              initial={{ y: -20, opacity: 0, scale: 0.9 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: -20, opacity: 0, scale: 0.9 }}
+              className={`px-5 py-3 rounded-full shadow-lg text-sm font-bold flex items-center gap-2 pointer-events-auto ${
+                toast.type === "wave" ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white"
+              }`}
+            >
+              {toast.message}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
