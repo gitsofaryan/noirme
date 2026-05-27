@@ -539,10 +539,7 @@ export default function LiveMap() {
           const newLng = ipLoc.lng + offset.lngOffset;
           setLocation((prev) => {
             if (!prev) return { lat: newLat, lng: newLng };
-            const dist = getDistanceKm(prev.lat, prev.lng, newLat, newLng);
-            if (dist > 0.003) {
-              return { lat: newLat, lng: newLng };
-            }
+            // DO NOT overwrite an existing cached or GPS location with an inaccurate IP location!
             return prev;
           });
           setLocStatus("granted");
@@ -640,6 +637,7 @@ export default function LiveMap() {
       ws.onopen = () => {
         if (!mounted) return;
         setSocketReady(true);
+        ws.send(JSON.stringify({ type: "request_sync" }));
       };
 
       ws.onmessage = (ev) => {
@@ -759,6 +757,18 @@ export default function LiveMap() {
     };
     // Only reconnect on identity change — NOT on profile edits
   }, [!!location, user?.username, maskLocation]);
+
+  // Periodic full sync to discover stationary users
+  useEffect(() => {
+    if (!socketReady) return;
+    const interval = setInterval(() => {
+      const ws = socketRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "request_sync" }));
+      }
+    }, 45000); // 45 seconds
+    return () => clearInterval(interval);
+  }, [socketReady]);
 
   // Send location + profile update to WebSocket whenever anything changes
   // This does NOT tear down the connection — it just sends a message

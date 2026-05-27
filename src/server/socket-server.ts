@@ -302,8 +302,6 @@ wss.on("connection", async (ws: any) => {
           broadcastLocationUpdate(info);
         }
 
-        // Send customized sync on location update/mount
-        await sendSync(ws);
       } else if (data.type === "create_hotspot") {
         const roomId = `room_${Math.random().toString(36).substring(2, 8)}`;
         const hostId = data.user_id;
