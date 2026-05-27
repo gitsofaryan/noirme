@@ -732,8 +732,8 @@ export default function LiveMap() {
               key={f.key}
               onClick={() => setSelectedFilter(f.key)}
               className={`px-3.5 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap shrink-0 transition-all duration-150 ${selectedFilter === f.key
-                  ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
-                  : "bg-white/95 border-zinc-200 text-zinc-600 shadow-sm"
+                ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                : "bg-white/95 border-zinc-200 text-zinc-600 shadow-sm"
                 }`}
             >
               {f.label}
@@ -802,8 +802,8 @@ export default function LiveMap() {
                       key={s}
                       onClick={() => setIntentText(s)}
                       className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-colors ${intentText === s
-                          ? "bg-zinc-900 border-zinc-900 text-white"
-                          : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
+                        ? "bg-zinc-900 border-zinc-900 text-white"
+                        : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
                         }`}
                     >
                       {s}
@@ -1176,8 +1176,8 @@ function ChatRoom({
                   )}
                   <div
                     className={`px-3.5 py-2 text-xs leading-normal shadow-sm ${isMe
-                        ? "bg-zinc-900 text-white rounded-2xl rounded-tr-none font-medium"
-                        : "bg-white border border-zinc-200/60 text-zinc-800 rounded-2xl rounded-tl-none font-medium"
+                      ? "bg-zinc-900 text-white rounded-2xl rounded-tr-none font-medium"
+                      : "bg-white border border-zinc-200/60 text-zinc-800 rounded-2xl rounded-tl-none font-medium"
                       }`}
                   >
                     {m.text}
