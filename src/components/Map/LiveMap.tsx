@@ -901,7 +901,7 @@ export default function LiveMap() {
 
               <div className="px-5 pt-2 pb-8">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-zinc-900">Post Hotspot Intent</h3>
+                  <h3 className="text-lg font-bold text-zinc-900">Post Intent</h3>
                   <button
                     onClick={() => setShowIntentModal(false)}
                     className="p-1.5 rounded-full bg-zinc-100 text-zinc-500 hover:bg-zinc-200 transition-colors"
