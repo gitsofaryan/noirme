@@ -142,8 +142,12 @@ async function publishHotspotUpdate() {
 }
 
 // ── Connection Handler ───────────────────────────────────────────────────────
-wss.on("connection", async (ws) => {
+wss.on("connection", async (ws: any) => {
   console.log("[noirme] Client connected");
+  ws.isAlive = true;
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
 
   // Initial Sync: Send current snapshot
   if (useRedis && redisPub) {
@@ -181,7 +185,7 @@ wss.on("connection", async (ws) => {
     );
   }
 
-  ws.on("message", async (raw) => {
+  ws.on("message", async (raw: any) => {
     try {
       const data = JSON.parse(raw.toString());
 
@@ -687,6 +691,19 @@ async function initRedis() {
     redisSub = null;
   }
 }
+
+// Heartbeat check every 30 seconds to clean up dead connections
+setInterval(() => {
+  wss.clients.forEach((ws: any) => {
+    if (ws.isAlive === false) {
+      console.log("[noirme] Terminating dead client connection");
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
 
 // Boot server
 initRedis().then(() => {

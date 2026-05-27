@@ -383,8 +383,14 @@ export default function LiveMap() {
 
     connect();
 
+    const handleUnload = () => {
+      if (ws) ws.close();
+    };
+    window.addEventListener("beforeunload", handleUnload);
+
     return () => {
       mounted = false;
+      window.removeEventListener("beforeunload", handleUnload);
       if (retryTimer) clearTimeout(retryTimer);
       ws?.close();
       socketRef.current = null;
