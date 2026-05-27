@@ -427,6 +427,21 @@ export default function LiveMap() {
       return;
     }
 
+    // Fast OS-level cached location for near-instant map loading
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (!finished) {
+          const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
+          const newLat = pos.coords.latitude + offset.latOffset;
+          const newLng = pos.coords.longitude + offset.lngOffset;
+          setLocation({ lat: newLat, lng: newLng });
+          setLocStatus("granted");
+        }
+      },
+      () => {}, // Ignore errors, watchPosition will handle it
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
+    );
+
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         finished = true;

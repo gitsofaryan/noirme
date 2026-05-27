@@ -159,6 +159,17 @@ async function publishHotspotUpdate() {
 }
 
 // ── Secure Sync & Broadcast Helpers ──────────────────────────────────────────
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+}
+
 async function sendSync(ws: WebSocket) {
   const clientInfo = clientsLocal.get(ws);
   if (!clientInfo) return;
@@ -181,24 +192,30 @@ async function sendSync(ws: WebSocket) {
     allHotspots = Array.from(hotspotsLocal.values());
   }
 
-  // Filter active users: omit blocked relationships
+  // Filter active users: omit blocked relationships and those outside 10km radius
   const activeUsers = allUsers.filter((u) => {
     if (!u.lat || !u.lng) return false;
     if (u.user_id === clientInfo.user_id) return false;
 
     const iBlockedU = (clientInfo.blockedUsers || []).includes(u.user_id);
     const uBlockedMe = (u.blockedUsers || []).includes(clientInfo.user_id);
-    return !iBlockedU && !uBlockedMe;
+    if (iBlockedU || uBlockedMe) return false;
+
+    const distance = getDistanceKm(clientInfo.lat, clientInfo.lng, u.lat, u.lng);
+    return distance <= 10;
   });
 
-  // Filter hotspots: omit blocked hosts
+  // Filter hotspots: omit blocked hosts, expired hotspots, and those outside 10km radius
   const activeHotspots = allHotspots.filter((h) => {
     if (h.expires_at <= Date.now()) return false;
 
     const iBlockedHost = (clientInfo.blockedUsers || []).includes(h.host_id);
     const hostInfo = Array.from(clientsLocal.values()).find((u) => u.user_id === h.host_id);
     const hostBlockedMe = (hostInfo?.blockedUsers || []).includes(clientInfo.user_id);
-    return !iBlockedHost && !hostBlockedMe;
+    if (iBlockedHost || hostBlockedMe) return false;
+
+    const distance = getDistanceKm(clientInfo.lat, clientInfo.lng, h.lat, h.lng);
+    return distance <= 10;
   });
 
   ws.send(
