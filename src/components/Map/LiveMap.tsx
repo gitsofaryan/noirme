@@ -703,6 +703,14 @@ export default function LiveMap() {
     }
   };
 
+  if (!location) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-[#FDFDFD]">
+        {/* Render nothing - the global loader will cover the screen */}
+      </div>
+    );
+  }
+
   // Filter nearby users (within 10km)
   const filteredUsers = activeUsers.filter((u) => {
     return getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= 10;
@@ -725,14 +733,6 @@ export default function LiveMap() {
   const isHost = selectedHotspot?.host_id === myUserId;
   const myRequest = selectedHotspot?.requests?.find((r: any) => r.user_id === myUserId);
   const guestStatus = myRequest ? myRequest.status : "none"; // 'pending' | 'accepted' | 'declined' | 'none'
-
-  if (!location) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center bg-[#FDFDFD]">
-        {/* Render nothing - the global loader will cover the screen */}
-      </div>
-    );
-  }
 
   // Distance computation for the open drawer
   const distance = selectedHotspot
