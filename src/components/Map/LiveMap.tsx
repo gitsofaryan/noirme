@@ -253,23 +253,33 @@ function matchesFilter(intent: any, key: string): boolean {
 
 async function getIPLocation(): Promise<{ lat: number; lng: number }> {
   try {
-    const res = await fetch("/api/geo");
-    if (!res.ok) throw new Error("Server-side geo fetch failed");
+    const res = await fetch("https://ipapi.co/json/");
+    if (!res.ok) throw new Error("ipapi failed");
     const data = await res.json();
-    if (data.lat && data.lng) {
-      return { lat: data.lat, lng: data.lng };
+    if (data.latitude && data.longitude) {
+      return { lat: data.latitude, lng: data.longitude };
     }
-    throw new Error("Invalid server geo format");
+    throw new Error("Invalid lat/lng");
   } catch (e) {
-    console.warn("Server-side IP geo fetch failed, using fallback:", e);
-    return { lat: 28.6139, lng: 77.209 };
+    try {
+      const res = await fetch("https://ipinfo.io/json");
+      if (!res.ok) throw new Error("ipinfo failed");
+      const data = await res.json();
+      if (data.loc) {
+        const [latStr, lngStr] = data.loc.split(",");
+        return { lat: parseFloat(latStr), lng: parseFloat(lngStr) };
+      }
+    } catch (err) {
+      console.warn("All IP Geo failed", err);
+    }
+    throw new Error("IP geolocation failed completely");
   }
 }
 
 export default function LiveMap() {
   const { isSignedIn, user, profile, isLoading } = useAuth();
 
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number }>(FALLBACK);
   const [locStatus, setLocStatus] = useState<"waiting" | "granted" | "denied">("waiting");
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [intents, setIntents] = useState<any[]>([]);
@@ -307,20 +317,10 @@ export default function LiveMap() {
   useEffect(() => {
     let finished = false;
 
-    // Safety fallback timeout to prevent hanging if geolocation fails completely
-    const fallbackTimeout = setTimeout(() => {
-      if (!finished) {
-        finished = true;
-        setLocation(FALLBACK);
-        setLocStatus("denied");
-      }
-    }, 2000);
-
     // Fast IP Geolocation fallback so map is never collapsed
     getIPLocation()
       .then((ipLoc) => {
         if (!finished) {
-          clearTimeout(fallbackTimeout);
           const offset = maskLocation ? 0.0018 : 0;
           setLocation({
             lat: ipLoc.lat + (Math.random() - 0.5) * offset,
@@ -340,7 +340,6 @@ export default function LiveMap() {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         finished = true;
-        clearTimeout(fallbackTimeout);
         const offset = maskLocation ? 0.0018 : 0;
         setLocation({
           lat: pos.coords.latitude + (Math.random() - 0.5) * offset,
@@ -349,14 +348,14 @@ export default function LiveMap() {
         setLocStatus("granted");
       },
       () => {
-        // Let IP geolocation or safety timeout handle the fallback
-        console.warn("Watch position error");
+        finished = true;
+        // Don't override if IP geolocation already succeeded
+        setLocStatus((prev) => (prev === "granted" ? "granted" : "denied"));
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
     return () => {
-      clearTimeout(fallbackTimeout);
       navigator.geolocation.clearWatch(watchId);
     };
   }, [maskLocation]);
@@ -692,14 +691,6 @@ export default function LiveMap() {
       }
     }
   };
-
-  if (!location) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center bg-[#FDFDFD]">
-        {/* Render nothing - the global loader will cover the screen */}
-      </div>
-    );
-  }
 
   // Filter nearby users (within 10km)
   const filteredUsers = activeUsers.filter((u) => {
