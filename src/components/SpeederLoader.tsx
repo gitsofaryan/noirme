@@ -2,7 +2,7 @@
 
 export default function SpeederLoader() {
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-screen bg-[#FDFDFD] relative overflow-hidden px-8 text-center w-full">
+    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#FDFDFD] overflow-hidden px-8 text-center w-full">
       {/* Injected Speeder Loader CSS */}
       <style>{`
         .loader {

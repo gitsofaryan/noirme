@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
+import SpeederLoader from '@/components/SpeederLoader';
 
 const LoadingContext = createContext<boolean>(true);
 
@@ -18,6 +19,7 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <LoadingContext.Provider value={isLoading}>
+            {isLoading && <SpeederLoader />}
             {children}
         </LoadingContext.Provider>
     );

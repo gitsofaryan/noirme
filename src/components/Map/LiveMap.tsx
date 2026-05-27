@@ -5,7 +5,6 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useAuth, getAvatarUrl } from "@/hooks/useAuth";
-import SpeederLoader from "@/components/SpeederLoader";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Send,
@@ -200,14 +199,6 @@ export default function LiveMap() {
   const [recenterTrigger, setRecenterTrigger] = useState(0);
   const [showIntentModal, setShowIntentModal] = useState(false);
   const [intentText, setIntentText] = useState("");
-
-  const [minLoadingTimePassed, setMinLoadingTimePassed] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setMinLoadingTimePassed(true);
-    }, 2000); // 2 seconds minimum loading time
-    return () => clearTimeout(timer);
-  }, []);
 
   // Drawer States
   const [selectedHotspot, _setSelectedHotspot] = useState<any | null>(null);
@@ -557,9 +548,6 @@ export default function LiveMap() {
       ws.send(JSON.stringify({ type: "request_sync" }));
     }
   };
-
-  if (isLoading || !minLoadingTimePassed) {
-    return <SpeederLoader />;}
 
   // Filter nearby users (within 10km)
   const filteredUsers = activeUsers.filter((u) => {
