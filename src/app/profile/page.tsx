@@ -46,7 +46,7 @@ const AVATAR_STYLES = [
 ];
 
 export default function ProfilePage() {
-  const { isSignedIn, isLoading, user, profile, saveProfile, signIn, signOut } = useAuth();
+  const { isSignedIn, isLoading, user, profile, saveProfile, signIn, signOut, unblockUser } = useAuth();
 
   const [handle, setHandle] = useState("");
   const [gender, setGender] = useState<"Male" | "Female" | "Non-binary" | "Prefer not to say" | "">("");
@@ -142,7 +142,7 @@ export default function ProfilePage() {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         const maxDim = 200;
-        
+
         let width = img.width;
         let height = img.height;
         if (width > height) {
@@ -156,11 +156,11 @@ export default function ProfilePage() {
             height = maxDim;
           }
         }
-        
+
         canvas.width = width;
         canvas.height = height;
         ctx?.drawImage(img, 0, 0, width, height);
-        
+
         const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
         setUploadedImage(dataUrl);
       };
@@ -205,13 +205,13 @@ export default function ProfilePage() {
     }
     setIsSaving(true);
     try {
-      await saveProfile({ 
-        handle, 
-        bio, 
-        vibeEmoji, 
-        radarRange, 
-        selectedTags, 
-        maskLocation, 
+      await saveProfile({
+        handle,
+        bio,
+        vibeEmoji,
+        radarRange,
+        selectedTags,
+        maskLocation,
         avatar_url: avatarUrl,
         gender,
         age: Number(age)
@@ -405,11 +405,10 @@ export default function ProfilePage() {
                   key={option}
                   type="button"
                   onClick={() => setGender(option)}
-                  className={`px-4 py-2.5 rounded-xl border text-xs font-semibold transition-all duration-150 ${
-                    active
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-semibold transition-all duration-150 ${active
                       ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
                       : "bg-zinc-50 border-zinc-200/80 text-zinc-550 hover:border-zinc-300"
-                  }`}
+                    }`}
                 >
                   {option}
                 </button>
@@ -463,11 +462,10 @@ export default function ProfilePage() {
                 <button
                   key={tag}
                   onClick={() => toggleTag(tag)}
-                  className={`px-3 py-1.5 rounded-full border text-[11px] font-semibold transition-all duration-150 ${
-                    active
+                  className={`px-3 py-1.5 rounded-full border text-[11px] font-semibold transition-all duration-150 ${active
                       ? "bg-zinc-900 border-zinc-900 text-white"
                       : "bg-white border-zinc-200 text-zinc-500 hover:border-zinc-400"
-                  }`}
+                    }`}
                 >
                   {tag}
                 </button>
@@ -495,6 +493,26 @@ export default function ProfilePage() {
           </button>
         </div>
 
+        {/* Blocked Users Section */}
+        {profile?.blockedUsers && profile.blockedUsers.length > 0 && (
+          <div className="space-y-3">
+            <label className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">Blocked Users</label>
+            <div className="space-y-2">
+              {profile.blockedUsers.map((id) => (
+                <div key={id} className="flex items-center justify-between bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-2.5">
+                  <span className="text-xs font-medium text-zinc-600">ID: {id}</span>
+                  <button
+                    onClick={() => unblockUser(id)}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700"
+                  >
+                    Unblock
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Save */}
         <div className="space-y-2">
           {error && (
@@ -504,9 +522,8 @@ export default function ProfilePage() {
             whileTap={{ scale: 0.98 }}
             onClick={handleSave}
             disabled={isSaving}
-            className={`w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-              saveSuccess ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white hover:bg-black"
-            } disabled:opacity-50`}
+            className={`w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${saveSuccess ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white hover:bg-black"
+              } disabled:opacity-50`}
           >
             {isSaving ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -555,26 +572,26 @@ export default function ProfilePage() {
 
               {/* Scrollable Content */}
               <div className="p-5 overflow-y-auto space-y-5 flex-1 scrollbar-none">
-                
+
                 {/* Big Preview */}
                 <div className="flex flex-col items-center">
-                  <div 
+                  <div
                     className="w-28 h-28 rounded-2xl border border-zinc-200 shadow-inner overflow-hidden flex items-center justify-center relative group"
-                    style={{ 
+                    style={{
                       backgroundImage: 'conic-gradient(#f4f4f5 25%, white 0 50%, #f4f4f5 0 75%, white 0)',
                       backgroundSize: '16px 16px'
                     }}
                   >
-                    <img 
-                      src={previewAvatarUrl} 
-                      alt="Avatar Preview" 
-                      className="w-24 h-24 object-contain transition-transform group-hover:scale-110" 
+                    <img
+                      src={previewAvatarUrl}
+                      alt="Avatar Preview"
+                      className="w-24 h-24 object-contain transition-transform group-hover:scale-110"
                     />
                   </div>
                   <span className="text-[9px] text-zinc-400 mt-2 font-medium tracking-wide bg-zinc-50 px-2 py-0.5 rounded-full border border-zinc-100">
                     {uploadedImage ? "Uploaded Custom Image" : "Transparent Background"}
                   </span>
-                  
+
                   <button
                     type="button"
                     onClick={triggerFileInput}
@@ -602,11 +619,10 @@ export default function ProfilePage() {
                         <button
                           key={preset}
                           onClick={() => selectPresetSeed(preset)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                            isActive 
-                              ? "bg-zinc-900 border-zinc-900 text-white" 
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${isActive
+                              ? "bg-zinc-900 border-zinc-900 text-white"
                               : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                          }`}
+                            }`}
                         >
                           {preset}
                         </button>
@@ -617,18 +633,17 @@ export default function ProfilePage() {
                         setActiveSeedType("custom");
                         setTempSeed(customSeedText.trim() || user?.username || "user");
                       }}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                        activeSeedType === "custom" 
-                          ? "bg-zinc-900 border-zinc-900 text-white" 
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${activeSeedType === "custom"
+                          ? "bg-zinc-900 border-zinc-900 text-white"
                           : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                      }`}
+                        }`}
                     >
                       Custom Seed
                     </button>
                   </div>
 
                   {activeSeedType === "custom" && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="flex gap-2 mt-2"
@@ -661,11 +676,10 @@ export default function ProfilePage() {
                         <button
                           key={style.id}
                           onClick={() => handleStyleChange(style.id)}
-                          className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
-                            isActive
+                          className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${isActive
                               ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
                               : "bg-zinc-50 border-zinc-200/60 text-zinc-700 hover:border-zinc-300"
-                          }`}
+                            }`}
                         >
                           <div className="w-10 h-10 rounded-lg bg-white border border-zinc-200/50 flex-shrink-0 overflow-hidden flex items-center justify-center">
                             <img src={stylePreviewUrl} alt={style.name} className="w-8 h-8 object-contain" />

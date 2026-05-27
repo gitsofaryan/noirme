@@ -30,6 +30,7 @@ type AuthContextType = {
   profile: UserProfile | null;
   saveProfile: (partial: Partial<UserProfile>) => Promise<void>;
   blockUser: (targetUserId: string) => Promise<void>;
+  unblockUser: (targetUserId: string) => Promise<void>;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -166,6 +167,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await saveProfile({ blockedUsers: updatedBlocks });
   };
 
+  const unblockUser = async (targetUserId: string) => {
+    if (!profile) return;
+    const currentBlocks = profile.blockedUsers || [];
+    if (!currentBlocks.includes(targetUserId)) {
+      // Even if not in profile, check local storage (fallback for sync)
+      if (typeof window !== "undefined") {
+        try {
+          const local = JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+          const filtered = local.filter((id: string) => id !== targetUserId);
+          localStorage.setItem("noirme_local_blocks", JSON.stringify(filtered));
+          // Trigger a storage event for other tabs/components
+          window.dispatchEvent(new Event("storage"));
+        } catch (e) { }
+      }
+      return;
+    }
+    const updatedBlocks = currentBlocks.filter((id) => id !== targetUserId);
+    await saveProfile({ blockedUsers: updatedBlocks });
+
+    // Also clear from local storage if present
+    if (typeof window !== "undefined") {
+      try {
+        const local = JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+        const filtered = local.filter((id: string) => id !== targetUserId);
+        localStorage.setItem("noirme_local_blocks", JSON.stringify(filtered));
+        window.dispatchEvent(new Event("storage"));
+      } catch (e) { }
+    }
+  };
+
   const signIn = async () => {
     if (!window.puter) return;
     setIsLoading(true);
@@ -191,7 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isSignedIn, isLoading, user, profile, saveProfile, blockUser, signIn, signOut }}>
+    <AuthContext.Provider value={{ isSignedIn, isLoading, user, profile, saveProfile, blockUser, unblockUser, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

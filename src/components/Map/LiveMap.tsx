@@ -64,6 +64,7 @@ function MapController({
   followUser,
   setFollowUser,
   setZoom,
+  setIsInteracting,
 }: {
   lat: number;
   lng: number;
@@ -71,6 +72,7 @@ function MapController({
   followUser: boolean;
   setFollowUser: (val: boolean) => void;
   setZoom: (val: number) => void;
+  setIsInteracting: (val: boolean) => void;
 }) {
   const map = useMap();
 
@@ -93,21 +95,33 @@ function MapController({
     };
   }, [map, setZoom]);
 
+  // Interaction handlers
+  useEffect(() => {
+    const onMoveStart = () => setIsInteracting(true);
+    const onMoveEnd = () => setIsInteracting(false);
+    const onDragStart = () => {
+      setFollowUser(false);
+      setIsInteracting(true);
+    };
+    const onDragEnd = () => setIsInteracting(false);
+
+    map.on("movestart", onMoveStart);
+    map.on("moveend", onMoveEnd);
+    map.on("dragstart", onDragStart);
+    map.on("dragend", onDragEnd);
+
+    return () => {
+      map.off("movestart", onMoveStart);
+      map.off("moveend", onMoveEnd);
+      map.off("dragstart", onDragStart);
+      map.off("dragend", onDragEnd);
+    };
+  }, [map, setFollowUser, setIsInteracting]);
+
   // flyTo on trigger change (recenter compass click)
   useEffect(() => {
     map.flyTo([lat, lng], map.getZoom(), { animate: true, duration: 0.8 });
   }, [trigger, map, lat, lng]);
-
-  // Turn off followUser if user drags the map manually
-  useEffect(() => {
-    const onDragStart = () => {
-      setFollowUser(false);
-    };
-    map.on("dragstart", onDragStart);
-    return () => {
-      map.off("dragstart", onDragStart);
-    };
-  }, [map, setFollowUser]);
 
   return null;
 }
@@ -395,6 +409,18 @@ export default function LiveMap() {
     return [];
   });
 
+  // Sync with local storage events (for unblocking from profile page)
+  useEffect(() => {
+    const syncBlocks = () => {
+      try {
+        const local = JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+        setLocalBlocks(local);
+      } catch (e) { }
+    };
+    window.addEventListener("storage", syncBlocks);
+    return () => window.removeEventListener("storage", syncBlocks);
+  }, []);
+
   const [zoom, setZoom] = useState(15);
   const handleBlock = async (userId: string) => {
     await blockUser(userId);
@@ -450,6 +476,8 @@ export default function LiveMap() {
   const [followUser, setFollowUser] = useState(true);
   const [showIntentModal, setShowIntentModal] = useState(false);
   const [intentText, setIntentText] = useState("");
+  const [isInteracting, setIsInteracting] = useState(false);
+  const [showBlockedModal, setShowBlockedModal] = useState(false);
 
   // Drawer States
   const [selectedHotspot, _setSelectedHotspot] = useState<any | null>(null);
@@ -990,6 +1018,7 @@ export default function LiveMap() {
           followUser={followUser}
           setFollowUser={setFollowUser}
           setZoom={setZoom}
+          setIsInteracting={setIsInteracting}
         />
 
         {/* Me */}
@@ -1051,128 +1080,139 @@ export default function LiveMap() {
       </MapContainer>
 
       {/* ─── OVERLAYS ─── */}
-
-      {/* Vibe Filters */}
-      <div className="absolute top-4 left-4 right-4 z-[400]">
-        <div className="flex gap-2 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-0.5">
-          {VIBE_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setSelectedFilter(f.key)}
-              className={`px-3.5 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap shrink-0 transition-all duration-150 ${selectedFilter === f.key
-                ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
-                : "bg-white/95 border-zinc-200 text-zinc-600 shadow-sm"
-                }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="absolute top-[72px] left-4 z-[400] flex flex-col gap-2">
-        {/* Zoom Controls */}
-        <div className="flex flex-col bg-white/95 backdrop-blur-sm rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-          <button
-            onClick={() => {
-              const map = (window as any).leafletMap;
-              if (map) map.setZoom(map.getZoom() + 1);
-            }}
-            className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:bg-zinc-50 border-b border-zinc-100 transition-colors font-bold text-lg"
+      <AnimatePresence>
+        {!isInteracting && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="pointer-events-none absolute inset-0 z-[400]"
           >
-            +
-          </button>
-          <button
-            onClick={() => {
-              const map = (window as any).leafletMap;
-              if (map) map.setZoom(map.getZoom() - 1);
-            }}
-            className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:bg-zinc-50 transition-colors font-bold text-lg"
-          >
-            −
-          </button>
-        </div>
+            {/* Vibe Filters */}
+            <div className="pointer-events-auto absolute top-4 left-4 right-4">
+              <div className="flex gap-2 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-0.5">
+                {VIBE_FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => setSelectedFilter(f.key)}
+                    className={`px-3.5 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap shrink-0 transition-all duration-150 ${selectedFilter === f.key
+                      ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                      : "bg-white/95 border-zinc-200 text-zinc-600 shadow-sm"
+                      }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        {/* Nearby Count */}
-        <div className="flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm px-2.5 py-1.5 rounded-full border border-zinc-200 shadow-sm self-start">
-          <span className="text-[11px] font-bold text-zinc-900 leading-none">
-            {filteredUsers.length}
-          </span>
-        </div>
-      </div>
-
-      {/* Notifications (Top Right) */}
-      <div className="absolute top-[72px] right-4 z-[400]">
-        <button
-          onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-          className="relative w-9 h-9 flex items-center justify-center bg-white/95 backdrop-blur-sm rounded-full border border-zinc-200 shadow-sm text-zinc-600 hover:text-zinc-900 transition-colors"
-        >
-          <Bell size={18} />
-          {notifications.some(n => !n.read) && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
-          )}
-        </button>
-
-        <AnimatePresence>
-          {showNotifDropdown && (
-            <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-zinc-200 shadow-xl overflow-hidden"
-            >
-              <div className="px-4 py-3 border-b border-zinc-100 flex justify-between items-center">
-                <span className="text-xs font-bold text-zinc-900 uppercase tracking-tight">Recent Activity</span>
+            <div className="pointer-events-auto absolute top-[72px] left-4 flex flex-col gap-2">
+              {/* Zoom Controls */}
+              <div className="flex flex-col bg-white/95 backdrop-blur-sm rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
                 <button
-                  onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
-                  className="text-[10px] text-zinc-400 font-bold hover:text-zinc-900"
+                  onClick={() => {
+                    const map = (window as any).leafletMap;
+                    if (map) map.setZoom(map.getZoom() + 1);
+                  }}
+                  className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:bg-zinc-50 border-b border-zinc-100 transition-colors font-bold text-lg"
                 >
-                  Clear
+                  +
+                </button>
+                <button
+                  onClick={() => {
+                    const map = (window as any).leafletMap;
+                    if (map) map.setZoom(map.getZoom() - 1);
+                  }}
+                  className="w-9 h-9 flex items-center justify-center text-zinc-600 hover:bg-zinc-50 transition-colors font-bold text-lg"
+                >
+                  −
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto py-1">
-                {notifications.length === 0 ? (
-                  <div className="px-4 py-8 text-center">
-                    <p className="text-[11px] font-medium text-zinc-400">No recent activity</p>
-                  </div>
-                ) : (
-                  notifications.map((n) => (
-                    <div key={n.id} className="px-4 py-3 hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0">
-                      <p className="text-[11px] font-medium text-zinc-800 leading-tight">{n.text}</p>
-                      <p className="text-[9px] text-zinc-400 mt-1 uppercase font-bold tracking-tighter">
-                        {new Date(n.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  ))
-                )}
+
+              {/* Nearby Count */}
+              <div className="flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm px-2.5 py-1.5 rounded-full border border-zinc-200 shadow-sm self-start">
+                <span className="text-[11px] font-bold text-zinc-900 leading-none">
+                  {filteredUsers.length}
+                </span>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            </div>
 
-      {/* Action Buttons (Compass + FAB) */}
-      <div className="absolute bottom-20 right-5 z-[400] flex flex-col items-center gap-4">
-        {/* Refresh Compass */}
-        <button
-          onClick={refreshRadar}
-          className="w-12 h-12 rounded-full bg-white/95 backdrop-blur-md border border-zinc-200 shadow-[0_4px_15px_rgba(0,0,0,0.1)] flex items-center justify-center text-zinc-500 hover:text-zinc-900 transition-colors active:scale-90"
-          title="Refresh Radar"
-        >
-          <Compass size={22} strokeWidth={2.5} />
-        </button>
+            {/* Notifications (Top Right) */}
+            <div className="pointer-events-auto absolute top-[72px] right-4">
+              <button
+                onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                className="relative w-9 h-9 flex items-center justify-center bg-white/95 backdrop-blur-sm rounded-full border border-zinc-200 shadow-sm text-zinc-600 hover:text-zinc-900 transition-colors"
+              >
+                <Bell size={18} />
+                {notifications.some((n) => !n.read) && (
+                  <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
+                )}
+              </button>
 
-        {/* Post Intent Button */}
-        {isSignedIn && (
-          <motion.button
-            whileTap={{ scale: 0.88 }}
-            onClick={() => setShowIntentModal(true)}
-            className="w-14 h-14 bg-zinc-900 text-white rounded-2xl flex items-center justify-center shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:bg-black transition-colors"
-          >
-            <Send className="w-6 h-6" strokeWidth={2} />
-          </motion.button>
+              <AnimatePresence>
+                {showNotifDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-zinc-200 shadow-xl overflow-hidden"
+                  >
+                    <div className="px-4 py-3 border-b border-zinc-100 flex justify-between items-center">
+                      <span className="text-xs font-bold text-zinc-900 uppercase tracking-tight">Recent Activity</span>
+                      <button
+                        onClick={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
+                        className="text-[10px] text-zinc-400 font-bold hover:text-zinc-900"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto py-1">
+                      {notifications.length === 0 ? (
+                        <div className="px-4 py-8 text-center">
+                          <p className="text-[11px] font-medium text-zinc-400">No recent activity</p>
+                        </div>
+                      ) : (
+                        notifications.map((n) => (
+                          <div key={n.id} className="px-4 py-3 hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0">
+                            <p className="text-[11px] font-medium text-zinc-800 leading-tight">{n.text}</p>
+                            <p className="text-[9px] text-zinc-400 mt-1 uppercase font-bold tracking-tighter">
+                              {new Date(n.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Action Buttons (Compass + FAB) */}
+            <div className="pointer-events-auto absolute bottom-20 right-5 flex flex-col items-center gap-4">
+              {/* Refresh Compass */}
+              <button
+                onClick={refreshRadar}
+                className="w-12 h-12 rounded-full bg-white/95 backdrop-blur-md border border-zinc-200 shadow-[0_4px_15px_rgba(0,0,0,0.1)] flex items-center justify-center text-zinc-500 hover:text-zinc-900 transition-colors active:scale-90"
+                title="Refresh Radar"
+              >
+                <Compass size={22} strokeWidth={2.5} />
+              </button>
+
+              {/* Post Intent Button */}
+              {isSignedIn && (
+                <motion.button
+                  whileTap={{ scale: 0.88 }}
+                  onClick={() => setShowIntentModal(true)}
+                  className="w-14 h-14 bg-zinc-900 text-white rounded-2xl flex items-center justify-center shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:bg-black transition-colors"
+                >
+                  <Send className="w-6 h-6" strokeWidth={2} />
+                </motion.button>
+              )}
+            </div>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
       {/* ─── INTENT MODAL ─── */}
       <AnimatePresence>
@@ -1656,8 +1696,8 @@ export default function LiveMap() {
                     }
                   }}
                   className={`flex-1 py-3.5 rounded-2xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] ${confirmBlock
-                      ? "border-rose-650 bg-rose-650 text-white hover:bg-rose-700"
-                      : "border-rose-200 hover:bg-rose-50 text-rose-650"
+                    ? "border-rose-650 bg-rose-650 text-white hover:bg-rose-700"
+                    : "border-rose-200 hover:bg-rose-50 text-rose-650"
                     }`}
                 >
                   {confirmBlock ? "Confirm Block?" : "Block / Report"}
@@ -1667,8 +1707,8 @@ export default function LiveMap() {
                   onClick={handleWave}
                   disabled={hasWaved}
                   className={`flex-1 py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${hasWaved
-                      ? "bg-emerald-500 text-white"
-                      : "bg-zinc-900 text-white hover:bg-black active:scale-[0.98]"
+                    ? "bg-emerald-500 text-white"
+                    : "bg-zinc-900 text-white hover:bg-black active:scale-[0.98]"
                     }`}
                 >
                   {hasWaved ? "Waved! 👋" : "Wave 👋"}
@@ -1768,8 +1808,8 @@ function ChatRoom({
             <button
               onClick={handleCopySOS}
               className={`w-full mt-2 py-2 rounded-xl text-[10px] font-bold transition-all active:scale-[0.98] ${copiedCoords
-                  ? "bg-emerald-600 text-white"
-                  : "bg-amber-600 hover:bg-amber-700 text-white"
+                ? "bg-emerald-600 text-white"
+                : "bg-amber-600 hover:bg-amber-700 text-white"
                 }`}
             >
               {copiedCoords ? "✓ SOS Info Copied to Clipboard!" : "🚨 Copy SOS Coordinates & Details"}
