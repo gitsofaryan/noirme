@@ -281,6 +281,17 @@ async function getIPLocation(): Promise<{ lat: number; lng: number }> {
 
 export default function LiveMap() {
   const { isSignedIn, user, profile, isLoading } = useAuth();
+  const locationOffsetRef = useRef<{ latOffset: number; lngOffset: number } | null>(null);
+  
+  const getStableOffset = () => {
+    if (!locationOffsetRef.current) {
+      locationOffsetRef.current = {
+        latOffset: (Math.random() - 0.5) * 0.0018,
+        lngOffset: (Math.random() - 0.5) * 0.0018,
+      };
+    }
+    return locationOffsetRef.current;
+  };
 
   const [location, setLocation] = useState<{ lat: number; lng: number }>(FALLBACK);
   const [locStatus, setLocStatus] = useState<"waiting" | "granted" | "denied">("waiting");
@@ -324,10 +335,18 @@ export default function LiveMap() {
     getIPLocation()
       .then((ipLoc) => {
         if (!finished) {
-          const offset = maskLocation ? 0.0018 : 0;
-          setLocation({
-            lat: ipLoc.lat + (Math.random() - 0.5) * offset,
-            lng: ipLoc.lng + (Math.random() - 0.5) * offset,
+          const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
+          const newLat = ipLoc.lat + offset.latOffset;
+          const newLng = ipLoc.lng + offset.lngOffset;
+          setLocation((prev) => {
+            if (prev.lat === FALLBACK.lat && prev.lng === FALLBACK.lng) {
+              return { lat: newLat, lng: newLng };
+            }
+            const dist = getDistanceKm(prev.lat, prev.lng, newLat, newLng);
+            if (dist > 0.003) {
+              return { lat: newLat, lng: newLng };
+            }
+            return prev;
           });
           setLocStatus("granted");
         }
@@ -343,10 +362,20 @@ export default function LiveMap() {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         finished = true;
-        const offset = maskLocation ? 0.0018 : 0;
-        setLocation({
-          lat: pos.coords.latitude + (Math.random() - 0.5) * offset,
-          lng: pos.coords.longitude + (Math.random() - 0.5) * offset,
+        const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
+        const newLat = pos.coords.latitude + offset.latOffset;
+        const newLng = pos.coords.longitude + offset.lngOffset;
+
+        setLocation((prev) => {
+          if (prev.lat === FALLBACK.lat && prev.lng === FALLBACK.lng) {
+            return { lat: newLat, lng: newLng };
+          }
+          const dist = getDistanceKm(prev.lat, prev.lng, newLat, newLng);
+          // Update only if moved more than 3 meters (0.003 km) to filter out GPS drift
+          if (dist > 0.003) {
+            return { lat: newLat, lng: newLng };
+          }
+          return prev;
         });
         setLocStatus("granted");
       },
@@ -651,10 +680,10 @@ export default function LiveMap() {
     getIPLocation()
       .then((ipLoc) => {
         if (!finished) {
-          const offset = maskLocation ? 0.0018 : 0;
+          const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
           const newCoords = {
-            lat: ipLoc.lat + (Math.random() - 0.5) * offset,
-            lng: ipLoc.lng + (Math.random() - 0.5) * offset,
+            lat: ipLoc.lat + offset.latOffset,
+            lng: ipLoc.lng + offset.lngOffset,
           };
           setLocation(newCoords);
           setLocStatus("granted");
@@ -667,10 +696,10 @@ export default function LiveMap() {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           finished = true;
-          const offset = maskLocation ? 0.0018 : 0;
+          const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
           const newCoords = {
-            lat: pos.coords.latitude + (Math.random() - 0.5) * offset,
-            lng: pos.coords.longitude + (Math.random() - 0.5) * offset,
+            lat: pos.coords.latitude + offset.latOffset,
+            lng: pos.coords.longitude + offset.lngOffset,
           };
           setLocation(newCoords);
           setLocStatus("granted");
