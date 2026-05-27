@@ -4,7 +4,6 @@ import { useEffect, useState, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import MarkerClusterGroup from "react-leaflet-cluster";
 import { useAuth, getAvatarUrl } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -63,26 +62,33 @@ function MapController({
   trigger,
   followUser,
   setFollowUser,
+  setZoom,
 }: {
   lat: number;
   lng: number;
   trigger: number;
   followUser: boolean;
   setFollowUser: (val: boolean) => void;
+  setZoom: (val: number) => void;
 }) {
   const map = useMap();
 
+  // Update zoom state initially and on zoom events
+  useEffect(() => {
+    setZoom(map.getZoom());
+    const onZoom = () => {
+      setZoom(map.getZoom());
+    };
+    map.on("zoomend", onZoom);
+    return () => {
+      map.off("zoomend", onZoom);
+    };
+  }, [map, setZoom]);
+
   // flyTo on trigger change (recenter compass click)
   useEffect(() => {
-    map.flyTo([lat, lng], 15, { animate: true, duration: 0.8 });
-  }, [trigger, map]);
-
-  // panTo when coordinates update if followUser is true
-  useEffect(() => {
-    if (followUser) {
-      map.panTo([lat, lng], { animate: true, duration: 0.5 });
-    }
-  }, [lat, lng, followUser, map]);
+    map.flyTo([lat, lng], map.getZoom(), { animate: true, duration: 0.8 });
+  }, [trigger, map, lat, lng]);
 
   // Turn off followUser if user drags the map manually
   useEffect(() => {
@@ -114,23 +120,30 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): 
 }
 
 // Creates a circular avatar marker using an img element
-function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: boolean, userId: string = "default", isWaving: boolean = false) {
+function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: boolean, zoom: number, userId: string = "default", isWaving: boolean = false) {
+  const baseSize = isMe ? 48 : 44;
+  // Scale size based on zoom Level (Reference point: zoom 15)
+  const scale = Math.max(0.3, Math.min(1.4, Math.pow(1.15, zoom - 15)));
+  const size = Math.round(baseSize * scale);
+  const emojiSize = Math.round(18 * scale);
+  const ringSize = Math.max(1, Math.round(2.5 * scale));
+
   // Use a simple hash of the userId to pick a consistent color for that user
   const colorIndex = Math.abs(userId.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % MARKER_COLORS.length;
   const randomColor = MARKER_COLORS[colorIndex];
 
   const ring = isMe ? "#000000" : randomColor;
   const shadow = isMe
-    ? "0 0 0 3px #000, 0 4px 16px rgba(0,0,0,0.25)"
-    : `0 0 0 2px ${randomColor}, 0 2px 12px rgba(0,0,0,0.15)`;
+    ? `0 0 0 ${Math.round(3 * scale)}px #000, 0 4px 16px rgba(0,0,0,0.25)`
+    : `0 0 0 ${Math.round(2 * scale)}px ${randomColor}, 0 2px 12px rgba(0,0,0,0.15)`;
 
   return L.divIcon({
     className: "",
     html: `
-      <div style="position:relative; width:44px; height:44px;">
+      <div style="position:relative; width:${size}px; height:${size}px;">
         <div style="
-          width:44px; height:44px; border-radius:50%;
-          border: 2.5px solid ${ring};
+          width:${size}px; height:${size}px; border-radius:50%;
+          border: ${ringSize}px solid ${ring};
           box-shadow: ${shadow};
           overflow: hidden;
           background: #ffffff;
@@ -144,17 +157,17 @@ function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: bool
         </div>
         <div style="
           position:absolute; bottom:-2px; right:-2px;
-          width:18px; height:18px; border-radius:50%;
+          width:${emojiSize}px; height:${emojiSize}px; border-radius:50%;
           background:white;
           border: 1.5px solid #e4e4e7;
           display:flex; align-items:center; justify-content:center;
-          font-size:10px;
+          font-size:${Math.round(10 * scale)}px;
           box-shadow: 0 1px 4px rgba(0,0,0,0.1);
         ">${vibeEmoji}</div>
         ${isWaving ? `
         <div style="
-          position:absolute; top:-16px; right:-16px;
-          font-size: 24px;
+          position:absolute; top:-${Math.round(16 * scale)}px; right:-${Math.round(16 * scale)}px;
+          font-size: ${Math.round(24 * scale)}px;
           animation: noirme-wave-anim 1.2s infinite;
           transform-origin: bottom right;
           z-index: 10;
@@ -173,23 +186,31 @@ function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: bool
         ` : ""}
       </div>
     `,
-    iconSize: [44, 44],
-    iconAnchor: [22, 22],
-    popupAnchor: [0, -26],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2 - 4],
   });
 }
 
 // Creates a beautiful pulsing hotspot room marker icon
-function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string) {
+function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string, zoom: number) {
+  const baseSize = 46;
+  const scale = Math.max(0.3, Math.min(1.4, Math.pow(1.15, zoom - 15)));
+  const size = Math.round(baseSize * scale);
+  const coreSize = Math.round(36 * scale);
+  const auraSize = Math.round(52 * scale);
+  const rotatingRingSize = Math.round(44 * scale);
+  const emojiSize = Math.round(18 * scale);
+
   return L.divIcon({
     className: "",
     html: `
-      <div style="position:relative; width:46px; height:46px; display:flex; align-items:center; justify-content:center;">
+      <div style="position:relative; width:${size}px; height:${size}px; display:flex; align-items:center; justify-content:center;">
         <!-- Glowing aura -->
         <div style="
           position:absolute;
-          width:52px;
-          height:52px;
+          width:${auraSize}px;
+          height:${auraSize}px;
           border-radius:50%;
           background: radial-gradient(circle, rgba(255,235,59,0.3) 0%, rgba(255,193,7,0) 70%);
           animation: glow 2.5s infinite alternate ease-in-out;
@@ -199,8 +220,8 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string) {
         <!-- Rotating ring -->
         <div style="
           position:absolute;
-          width:44px;
-          height:44px;
+          width:${rotatingRingSize}px;
+          height:${rotatingRingSize}px;
           border-radius:50%;
           border: 2px dashed #FFC107;
           animation: spin 8s linear infinite;
@@ -210,8 +231,8 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string) {
         <!-- Pulsing core -->
         <div style="
           position:relative;
-          width:36px;
-          height:36px;
+          width:${coreSize}px;
+          height:${coreSize}px;
           border-radius:50%;
           border: 2px solid #000;
           box-shadow: 0 0 15px rgba(255,193,7,0.5);
@@ -228,11 +249,11 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string) {
         </div>
         <div style="
           position:absolute; bottom:-1px; right:-1px;
-          width:18px; height:18px; border-radius:50%;
+          width:${emojiSize}px; height:${emojiSize}px; border-radius:50%;
           background: #FFC107;
           border: 1.5px solid #000;
           display:flex; align-items:center; justify-content:center;
-          font-size:10px;
+          font-size:${Math.round(10 * scale)}px;
           box-shadow: 0 2px 5px rgba(0,0,0,0.2);
           z-index: 3;
         ">${vibeEmoji}</div>
@@ -248,9 +269,9 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string) {
         }
       </style>
     `,
-    iconSize: [46, 46],
-    iconAnchor: [23, 23],
-    popupAnchor: [0, -24],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2 - 2],
   });
 }
 
@@ -353,8 +374,23 @@ export default function LiveMap() {
     }
   };
 
+  const [localBlocks, setLocalBlocks] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const [zoom, setZoom] = useState(15);
   const handleBlock = async (userId: string) => {
     await blockUser(userId);
+    const newBlocks = [...localBlocks, userId];
+    setLocalBlocks(newBlocks);
+    localStorage.setItem("noirme_local_blocks", JSON.stringify(newBlocks));
     setSelectedUser(null);
   };
   const locationOffsetRef = useRef<{ latOffset: number; lngOffset: number } | null>(null);
@@ -688,7 +724,7 @@ export default function LiveMap() {
         selectedTags: profile?.selectedTags || [],
         gender: profile?.gender || "",
         age: profile?.age || "",
-        blockedUsers: profile?.blockedUsers || [],
+        blockedUsers: [...(profile?.blockedUsers || []), ...localBlocks],
       })
     );
   }, [
@@ -703,6 +739,7 @@ export default function LiveMap() {
     profile?.gender,
     profile?.age,
     profile?.blockedUsers,
+    localBlocks,
   ]);
 
   const postIntent = () => {
@@ -876,7 +913,7 @@ export default function LiveMap() {
 
   // Filter nearby users (within 10km)
   const filteredUsers = activeUsers.filter((u) => {
-    const blockedIds = profile?.blockedUsers || [];
+    const blockedIds = [...(profile?.blockedUsers || []), ...localBlocks];
     const isBlocked = blockedIds.includes(u.user_id) || (u.blockedUsers || []).includes(myUserId);
     const isWithinRange = getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= 10;
     return !isBlocked && isWithinRange;
@@ -884,7 +921,7 @@ export default function LiveMap() {
 
   // Filter nearby active hotspots (within 10km)
   const filteredHotspots = intents.filter((h) => {
-    const blockedIds = profile?.blockedUsers || [];
+    const blockedIds = [...(profile?.blockedUsers || []), ...localBlocks];
     const isBlocked = blockedIds.includes(h.host_id);
     const isWithinRange = getDistanceKm(location.lat, location.lng, h.lat, h.lng) <= 10;
     const isNotExpired = h.expires_at > Date.now();
@@ -924,107 +961,72 @@ export default function LiveMap() {
           trigger={recenterTrigger}
           followUser={followUser}
           setFollowUser={setFollowUser}
+          setZoom={setZoom}
         />
 
-        {/* Marker Cluster Group handles all user/hotspot clustering automatically */}
-        <MarkerClusterGroup
-          chunkedLoading
-          maxClusterRadius={40}
-          showCoverageOnHover={false}
-          spiderfyOnMaxZoom={true}
+        {/* Me */}
+        <Marker
+          position={[location.lat, location.lng]}
+          icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, user?.id || "me")}
         >
-          {/* Me */}
-          <Marker
-            position={[location.lat, location.lng]}
-            icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, user?.id || "me")}
-          >
-            <Popup>
-              <div className="flex items-center gap-2.5 p-2.5 pr-7 bg-white">
-                <img
-                  src={myAvatarUrl}
-                  className="w-9 h-9 rounded-full object-cover bg-zinc-50 border border-zinc-100"
-                  alt="you"
-                />
-                <div>
-                  <p className="font-bold text-xs text-zinc-900">{handle}</p>
-                  <p className="text-[10px] text-zinc-400 flex items-center gap-1 mt-0.5">
-                    <Shield size={9} /> {maskLocation ? "Location masked" : "Exact location"}
-                  </p>
-                </div>
+          <Popup>
+            <div className="flex items-center gap-2.5 p-2.5 pr-7 bg-white">
+              <img
+                src={myAvatarUrl}
+                className="w-9 h-9 rounded-full object-cover bg-zinc-50 border border-zinc-100"
+                alt="you"
+              />
+              <div>
+                <p className="font-bold text-xs text-zinc-900">{handle}</p>
+                <p className="text-[10px] text-zinc-400 flex items-center gap-1 mt-0.5">
+                  <Shield size={9} /> {maskLocation ? "Location masked" : "Exact location"}
+                </p>
               </div>
-            </Popup>
-          </Marker>
+            </div>
+          </Popup>
+        </Marker>
 
-          {/* Nearby Users */}
-          {filteredUsers.map((u, idx) => {
-            const av = u.avatar_url || getAvatarUrl(u.username || "user");
-            const isWaving = activeWaves.some((w) => w.sender_id === u.user_id);
-            return (
-              <Marker
-                key={u.user_id || idx}
-                position={[u.lat, u.lng]}
-                icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, u.user_id, isWaving)}
-                eventHandlers={{
-                  click: () => {
-                    setSelectedUser(u);
-                  },
-                }}
-              />
-            );
-          })}
+        {/* Nearby Users */}
+        {filteredUsers.map((u, idx) => {
+          const av = u.avatar_url || getAvatarUrl(u.username || "user");
+          const isWaving = activeWaves.some((w) => w.sender_id === u.user_id);
+          return (
+            <Marker
+              key={u.user_id || idx}
+              position={[u.lat, u.lng]}
+              icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, zoom, u.user_id, isWaving)}
+              eventHandlers={{
+                click: () => {
+                  setSelectedUser(u);
+                },
+              }}
+            />
+          );
+        })}
 
-          {/* Hotspots */}
-          {filteredHotspots.map((hotspot) => {
-            const av = hotspot.host_avatar || getAvatarUrl(hotspot.host_username);
-            return (
-              <Marker
-                key={hotspot.id}
-                position={[hotspot.lat, hotspot.lng]}
-                icon={createHotspotMarkerIcon(av, hotspot.vibeEmoji || "☕")}
-                eventHandlers={{
-                  click: () => {
-                    setSelectedHotspot(hotspot);
-                  },
-                }}
-              />
-            );
-          })}
-        </MarkerClusterGroup>
+        {/* Hotspots */}
+        {filteredHotspots.map((hotspot) => {
+          const av = hotspot.host_avatar || getAvatarUrl(hotspot.host_username);
+          return (
+            <Marker
+              key={hotspot.id}
+              position={[hotspot.lat, hotspot.lng]}
+              icon={createHotspotMarkerIcon(av, hotspot.vibeEmoji || "☕", zoom)}
+              eventHandlers={{
+                click: () => {
+                  setSelectedHotspot(hotspot);
+                },
+              }}
+            />
+          );
+        })}
       </MapContainer>
 
       {/* ─── OVERLAYS ─── */}
 
-      {/* Top status bar */}
-      <div className="absolute top-4 left-4 right-4 z-[400] flex justify-between items-center gap-2">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-white border border-zinc-200 shadow-sm">
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${socketReady ? "bg-emerald-500 animate-pulse" : "bg-amber-400 animate-pulse"
-              }`}
-          />
-          <span className="text-[10px] font-bold tracking-widest text-zinc-600">
-            {socketReady ? "LIVE" : "CONNECTING…"}
-          </span>
-          {socketReady && (
-            <span className="text-[9px] font-semibold text-zinc-400 border-l border-zinc-200 pl-2">
-              {filteredUsers.length === 0
-                ? "You're first here"
-                : `${filteredUsers.length} nearby`}
-            </span>
-          )}
-        </div>
-
-        <button
-          onClick={refreshRadar}
-          className="w-10 h-10 rounded-full bg-white border border-zinc-200 shadow-sm flex items-center justify-center text-zinc-500 hover:text-zinc-900 transition-colors active:scale-90"
-          title="Refresh Radar"
-        >
-          <Compass size={16} strokeWidth={2} />
-        </button>
-      </div>
-
       {/* Vibe Filters */}
-      <div className="absolute top-[72px] left-4 right-4 z-[400]">
-        <div className="flex gap-2 overflow-x-auto scrollbar-none pb-0.5">
+      <div className="absolute top-4 left-4 right-4 z-[400]">
+        <div className="flex gap-2 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-0.5">
           {VIBE_FILTERS.map((f) => (
             <button
               key={f.key}
@@ -1040,20 +1042,39 @@ export default function LiveMap() {
         </div>
       </div>
 
+      {/* Online Users Bubble */}
+      <div className="absolute top-16 right-4 z-[400] flex flex-col items-center justify-center gap-1.5 bg-white/95 backdrop-blur-md w-9 h-14 rounded-full border border-zinc-200 shadow-sm py-2">
+        <span
+          className={`w-2 h-2 rounded-full ${socketReady ? "bg-emerald-500 animate-pulse" : "bg-amber-400 animate-pulse"
+            }`}
+        />
+        <span className="text-[11px] font-bold text-zinc-600">
+          {filteredUsers.length}
+        </span>
+      </div>
 
-
-      {/* FAB (above navbar) */}
-      {isSignedIn && (
-        <div className="absolute bottom-20 right-5 z-[400]">
+      {/* Action Buttons (Compass + FAB) */}
+      <div className="absolute bottom-20 right-5 z-[400] flex flex-col items-center gap-4">
+        {/* Refresh Compass */}
+        <button
+          onClick={refreshRadar}
+          className="w-12 h-12 rounded-full bg-white/95 backdrop-blur-md border border-zinc-200 shadow-[0_4px_15px_rgba(0,0,0,0.1)] flex items-center justify-center text-zinc-500 hover:text-zinc-900 transition-colors active:scale-90"
+          title="Refresh Radar"
+        >
+          <Compass size={22} strokeWidth={2.5} />
+        </button>
+        
+        {/* Post Intent Button */}
+        {isSignedIn && (
           <motion.button
             whileTap={{ scale: 0.88 }}
             onClick={() => setShowIntentModal(true)}
             className="w-14 h-14 bg-zinc-900 text-white rounded-2xl flex items-center justify-center shadow-[0_4px_20px_rgba(0,0,0,0.2)] hover:bg-black transition-colors"
           >
-            <Send className="w-5 h-5" strokeWidth={2} />
+            <Send className="w-6 h-6" strokeWidth={2} />
           </motion.button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ─── INTENT MODAL ─── */}
       <AnimatePresence>
