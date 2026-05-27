@@ -56,11 +56,44 @@ const MARKER_COLORS = [
   "#33FFBD", // Mint
 ];
 
-function MapController({ lat, lng, trigger }: { lat: number; lng: number; trigger: number }) {
+function MapController({
+  lat,
+  lng,
+  trigger,
+  followUser,
+  setFollowUser,
+}: {
+  lat: number;
+  lng: number;
+  trigger: number;
+  followUser: boolean;
+  setFollowUser: (val: boolean) => void;
+}) {
   const map = useMap();
+
+  // flyTo on trigger change (recenter compass click)
   useEffect(() => {
     map.flyTo([lat, lng], 15, { animate: true, duration: 0.8 });
-  }, [lat, lng, trigger, map]);
+  }, [trigger, map]);
+
+  // panTo when coordinates update if followUser is true
+  useEffect(() => {
+    if (followUser) {
+      map.panTo([lat, lng], { animate: true, duration: 0.5 });
+    }
+  }, [lat, lng, followUser, map]);
+
+  // Turn off followUser if user drags the map manually
+  useEffect(() => {
+    const onDragStart = () => {
+      setFollowUser(false);
+    };
+    map.on("dragstart", onDragStart);
+    return () => {
+      map.off("dragstart", onDragStart);
+    };
+  }, [map, setFollowUser]);
+
   return null;
 }
 
@@ -255,6 +288,7 @@ export default function LiveMap() {
 
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [recenterTrigger, setRecenterTrigger] = useState(0);
+  const [followUser, setFollowUser] = useState(true);
   const [showIntentModal, setShowIntentModal] = useState(false);
   const [intentText, setIntentText] = useState("");
 
@@ -279,7 +313,7 @@ export default function LiveMap() {
   const myAvatarUrl =
     profile?.avatar_url || (user ? getAvatarUrl(user.username) : getAvatarUrl("anon"));
 
-  // — Get location with race (IP location + high-accuracy geolocation fallback)
+  // — Get and watch location with race (IP location + high-accuracy live watchPosition fallback)
   useEffect(() => {
     let finished = false;
 
@@ -303,7 +337,7 @@ export default function LiveMap() {
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         finished = true;
         const offset = maskLocation ? 0.0018 : 0;
@@ -318,8 +352,12 @@ export default function LiveMap() {
         // Don't override if IP geolocation already succeeded
         setLocStatus((prev) => (prev === "granted" ? "granted" : "denied"));
       },
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: 30000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
   }, [maskLocation]);
 
   // ── WebSocket: connect on mount, no location required to start ─────────────
@@ -600,7 +638,8 @@ export default function LiveMap() {
   };
 
   const refreshRadar = () => {
-    // 1. Recenter map
+    // 1. Enable follow user and recenter
+    setFollowUser(true);
     setRecenterTrigger((t) => t + 1);
 
     let finished = false;
@@ -641,7 +680,7 @@ export default function LiveMap() {
             ws.send(JSON.stringify({ type: "request_sync" }));
           }
         },
-        { enableHighAccuracy: false, timeout: 5000, maximumAge: 10000 }
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
       );
     } else {
       finished = true;
@@ -697,7 +736,13 @@ export default function LiveMap() {
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
         />
-        <MapController lat={location.lat} lng={location.lng} trigger={recenterTrigger} />
+        <MapController
+          lat={location.lat}
+          lng={location.lng}
+          trigger={recenterTrigger}
+          followUser={followUser}
+          setFollowUser={setFollowUser}
+        />
 
         {/* Me */}
         <Marker
