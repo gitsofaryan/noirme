@@ -185,6 +185,39 @@ wss.on("connection", async (ws) => {
     try {
       const data = JSON.parse(raw.toString());
 
+      if (data.type === "request_sync") {
+        if (useRedis && redisPub) {
+          try {
+            const rawUsers = await redisPub.hGetAll("noirme:active_users");
+            const activeUsers = Object.values(rawUsers).map((u) => JSON.parse(u));
+            const rawHotspots = await redisPub.hGetAll("noirme:hotspots");
+            const activeHotspots = Object.values(rawHotspots).map((h) => JSON.parse(h));
+            ws.send(
+              JSON.stringify({
+                type: "sync",
+                users: activeUsers,
+                hotspots: activeHotspots,
+              })
+            );
+          } catch (e) {
+            console.error("[noirme] Redis sync request failed:", e);
+          }
+        } else {
+          const activeUsers = Array.from(clientsLocal.values()).filter((u) => u.lat && u.lng);
+          const activeHotspots = Array.from(hotspotsLocal.values()).filter(
+            (h) => h.expires_at > Date.now()
+          );
+          ws.send(
+            JSON.stringify({
+              type: "sync",
+              users: activeUsers,
+              hotspots: activeHotspots,
+            })
+          );
+        }
+        return;
+      }
+
       if (data.type === "location_update") {
         const info: ClientInfo = {
           user_id: data.user_id,

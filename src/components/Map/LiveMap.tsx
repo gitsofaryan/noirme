@@ -493,6 +493,56 @@ export default function LiveMap() {
     setSelectedHotspot(null);
   };
 
+  const refreshRadar = () => {
+    // 1. Recenter map
+    setRecenterTrigger((t) => t + 1);
+
+    // 2. Fetch latest geolocation and update coordinate on socket server
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const offset = maskLocation ? 0.0018 : 0;
+          const newCoords = {
+            lat: pos.coords.latitude + (Math.random() - 0.5) * offset,
+            lng: pos.coords.longitude + (Math.random() - 0.5) * offset,
+          };
+          setLocation(newCoords);
+          setLocStatus("granted");
+
+          const ws = socketRef.current;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            const userId =
+              user?.id ||
+              user?.username ||
+              (typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : null) ||
+              "anon";
+            ws.send(
+              JSON.stringify({
+                type: "location_update",
+                user_id: userId,
+                username: handle,
+                vibeEmoji: vibeEmoji,
+                avatar_url: myAvatarUrl,
+                lat: newCoords.lat,
+                lng: newCoords.lng,
+              })
+            );
+          }
+        },
+        () => {
+          setLocStatus("denied");
+        },
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 10000 }
+      );
+    }
+
+    // 3. Request fresh sync from socket server
+    const ws = socketRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "request_sync" }));
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-white gap-4 px-8 text-center">
@@ -637,8 +687,9 @@ export default function LiveMap() {
         </div>
 
         <button
-          onClick={() => setRecenterTrigger((t) => t + 1)}
+          onClick={refreshRadar}
           className="w-10 h-10 rounded-full bg-white border border-zinc-200 shadow-sm flex items-center justify-center text-zinc-500 hover:text-zinc-900 transition-colors active:scale-90"
+          title="Refresh Radar"
         >
           <Compass size={16} strokeWidth={2} />
         </button>
