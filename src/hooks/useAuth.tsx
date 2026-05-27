@@ -17,6 +17,7 @@ export type UserProfile = {
   vibeEmoji: string;
   radarRange: number;
   hotspotRange?: number;
+  bannerGradient?: number;
   selectedTags: string[];
   maskLocation: boolean;
   gender: "Male" | "Female" | "Non-binary" | "Prefer not to say" | "";

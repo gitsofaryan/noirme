@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useAuth, getAvatarUrl } from "@/hooks/useAuth";
@@ -1098,19 +1098,13 @@ export default function LiveMap() {
           position={[location.lat, location.lng]}
           icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, user?.id || "me")}
         >
-          <Popup>
-            <div className="flex items-center gap-2.5 p-2.5 pr-7 bg-white">
-              <img
-                src={myAvatarUrl}
-                className="w-9 h-9 rounded-full object-cover bg-zinc-50 border border-zinc-100"
-                alt="you"
-              />
-              <div>
-                <p className="font-bold text-xs text-zinc-900">{handle}</p>
-                <p className="text-[10px] text-zinc-400 flex items-center gap-1 mt-0.5">
-                  <Shield size={9} /> {maskLocation ? "Location masked" : "Exact location"}
-                </p>
+          <Popup className="cloudy-popup">
+            <div className="flex flex-col items-center justify-center p-3 px-5 text-center text-zinc-800">
+              <div className="w-12 h-12 rounded-full overflow-hidden bg-white/60 border border-white/80 shadow-sm flex items-center justify-center mb-1.5">
+                <img src={myAvatarUrl} className="w-full h-full object-cover" alt="you" />
               </div>
+              <p className="font-black text-sm text-zinc-900 leading-none">Me</p>
+              <p className="text-[9px] font-semibold text-zinc-500/80 mt-1 uppercase tracking-wider">@{user?.username || "you"}</p>
             </div>
           </Popup>
         </Marker>

@@ -56,24 +56,40 @@ html, body {
   border-radius: 4px 0 0 0 !important;
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
+/* Hide scrollbars globally across the entire app for all browsers */
+* {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important;  /* IE and Edge */
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.1);
-  border-radius: 2px;
+*::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari, Opera, Webkit */
+  width: 0 !important;
+  height: 0 !important;
 }
 
-/* Hide scrollbar utility */
-.scrollbar-none::-webkit-scrollbar {
-  display: none;
+/* Glassmorphism Cloudy Div & Popup style */
+.leaflet-popup.cloudy-popup .leaflet-popup-content-wrapper {
+  background: rgba(255, 255, 255, 0.45) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08), inset 0 0 12px rgba(255, 255, 255, 0.3) !important;
 }
-.scrollbar-none {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+
+.cloudy-div {
+  background: rgba(255, 255, 255, 0.45) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08), inset 0 0 12px rgba(255, 255, 255, 0.3) !important;
+}
+
+.leaflet-popup.cloudy-popup .leaflet-popup-close-button {
+  color: #a1a1aa !important;
+  top: 8px !important;
+  right: 10px !important;
+  font-size: 14px !important;
 }
 

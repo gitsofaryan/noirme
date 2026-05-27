@@ -48,8 +48,23 @@ const AVATAR_STYLES = [
   { id: "toon-head", name: "Toon Head" },
 ];
 
+const GRADIENTS = [
+  "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)", // Pink-Red
+  "linear-gradient(135deg, #5ee7df 0%, #b490ca 100%)", // Cyan-Purple
+  "linear-gradient(135deg, #f6d365 0%, #fda085 100%)", // Orange-Yellow
+  "linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)", // Sky-Blue
+  "linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)", // Mint-Blue
+  "linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)", // Rose
+  "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", // Indigo-Purple
+  "linear-gradient(135deg, #fddb92 0%, #d1f2f2 100%)", // Gold-Mint
+  "linear-gradient(135deg, #ebc0fd 0%, #d9ded8 100%)", // Lavender
+];
+
 export default function ProfilePage() {
   const { isSignedIn, isLoading, user, profile, saveProfile, signIn, signOut, unblockUser } = useAuth();
+
+  const [gradientIdx, setGradientIdx] = useState<number>(0);
+  const userGradient = GRADIENTS[gradientIdx];
 
   const [handle, setHandle] = useState("");
   const [gender, setGender] = useState<"Male" | "Female" | "Non-binary" | "Prefer not to say" | "">("");
@@ -73,7 +88,21 @@ export default function ProfilePage() {
   const [activeSeedType, setActiveSeedType] = useState<"Felix" | "Aneka" | "Milo" | "Luna" | "custom">("Felix");
   const [customSeedText, setCustomSeedText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+
+  // Click outside for floating vibe emoji picker
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (showEmojiPicker && emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showEmojiPicker]);
 
   // Parse existing avatar URL on open
   useEffect(() => {
@@ -180,6 +209,13 @@ export default function ProfilePage() {
       setAvatarUrl(profile.avatar_url || getAvatarUrl(profile.username));
       setGender(profile.gender || "");
       setAge(profile.age || "");
+      if (profile.bannerGradient !== undefined) {
+        setGradientIdx(profile.bannerGradient);
+      } else {
+        const seed = profile.username || "default";
+        const initialIdx = Math.abs(seed.split("").reduce((a: number, c: string) => a + c.charCodeAt(0), 0)) % GRADIENTS.length;
+        setGradientIdx(initialIdx);
+      }
     }
   }, [profile]);
 
@@ -190,7 +226,7 @@ export default function ProfilePage() {
     if (age === "" || isNaN(Number(age)) || Number(age) <= 0) { setError("Please enter a valid age."); return; }
     setIsSaving(true);
     try {
-      await saveProfile({ handle, bio, vibeEmoji, radarRange, hotspotRange, selectedTags, maskLocation, avatar_url: avatarUrl, gender, age: Number(age) });
+      await saveProfile({ handle, bio, vibeEmoji, radarRange, hotspotRange, bannerGradient: gradientIdx, selectedTags, maskLocation, avatar_url: avatarUrl, gender, age: Number(age) });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (e) {
@@ -270,71 +306,92 @@ export default function ProfilePage() {
     <div className="h-full overflow-y-auto bg-zinc-50 text-zinc-900 pb-4">
 
       {/* ═══════════════ HERO CARD ═══════════════ */}
-      <div className="bg-white mx-0 pt-8 pb-6 px-5 border-b border-zinc-100">
-        <div className="flex items-center gap-4">
-          {/* Avatar */}
-          <div className="relative shrink-0 group cursor-pointer" onClick={() => setShowAvatarPicker(true)}>
-            <div className="w-20 h-20 rounded-full bg-white overflow-hidden border-2 border-zinc-200 shadow-sm transition-all group-hover:scale-[1.03] relative">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span className="flex items-center justify-center w-full h-full text-2xl">{vibeEmoji}</span>
-              )}
+      <div className="bg-white mx-0 border-b border-zinc-100 relative">
+        {/* Deterministic RGB Gradient Header Banner */}
+        <div
+          className="w-full h-28 relative"
+          style={{ background: userGradient }}
+        >
+          {/* Double Arrow Shuffle Button inside Banner top-right */}
+          <button
+            onClick={async () => {
+              const nextIdx = Math.floor(Math.random() * GRADIENTS.length);
+              setGradientIdx(nextIdx);
+              try {
+                await saveProfile({ bannerGradient: nextIdx });
+              } catch (e) {
+                console.error("Failed to auto-save gradient:", e);
+              }
+            }}
+            title="Randomize Gradient Banner"
+            className="absolute top-3 right-3 p-2 rounded-xl bg-white/20 hover:bg-white/30 text-white backdrop-blur-md transition-colors border border-white/10 active:scale-90 flex items-center justify-center cursor-pointer shadow-sm z-30"
+          >
+            <Shuffle size={14} />
+          </button>
+        </div>
+        <div className="flex flex-col items-center text-center px-5 -mt-10 pb-6 relative z-10">
+          {/* Avatar Container with Vibe Badge and Floating Vibe Picker */}
+          <div className="relative shrink-0 mb-3">
+            <div className="relative group cursor-pointer" onClick={() => setShowAvatarPicker(true)}>
+              <div className="w-20 h-20 rounded-full bg-white overflow-hidden border-4 border-white shadow-md transition-all group-hover:scale-[1.03] relative">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="flex items-center justify-center w-full h-full text-2xl bg-zinc-50">{vibeEmoji}</span>
+                )}
+              </div>
+              {/* Vibe badge button */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(v => !v); }}
+                className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-zinc-200 shadow-sm flex items-center justify-center text-sm hover:bg-zinc-50 transition-colors z-20 active:scale-90"
+              >
+                {vibeEmoji}
+              </button>
             </div>
-            {/* Vibe badge */}
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(v => !v); }}
-              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-zinc-200 shadow-sm flex items-center justify-center text-sm hover:bg-zinc-50 transition-colors z-10 active:scale-90"
-            >
-              {vibeEmoji}
-            </button>
+
+            {/* Vibe Emoji Picker floating locally in the air */}
+            <AnimatePresence>
+              {showEmojiPicker && (
+                <motion.div
+                  ref={emojiPickerRef}
+                  initial={{ opacity: 0, scale: 0.9, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 8 }}
+                  className="absolute top-[100px] left-1/2 -translate-x-1/2 z-50 bg-white border border-zinc-200 rounded-2xl p-2.5 grid grid-cols-8 gap-1 shadow-xl w-[340px]"
+                >
+                  {EMOJI_OPTIONS.map(e => (
+                    <button
+                      key={e}
+                      type="button"
+                      onClick={() => { setVibeEmoji(e); setShowEmojiPicker(false); }}
+                      className={`w-9 h-9 text-lg flex items-center justify-center rounded-lg transition-colors hover:bg-zinc-100 active:scale-90 ${vibeEmoji === e ? "bg-zinc-50 border border-zinc-200 shadow-sm" : ""
+                        }`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Info */}
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-zinc-900 truncate">{handle || user?.username}</h2>
+          <div className="w-full flex flex-col items-center">
+            <h2 className="text-lg font-bold text-zinc-900 truncate max-w-[200px]">{handle || user?.username}</h2>
             <p className="text-xs text-zinc-400 mt-0.5">@{user?.username}</p>
             <div className="flex gap-2 mt-3">
               <button
                 onClick={() => setShowAvatarPicker(true)}
-                className="px-3 py-1.5 rounded-full bg-zinc-900 text-[10px] font-semibold text-white hover:bg-black transition-colors flex items-center gap-1 shadow-sm active:scale-95"
+                className="px-4 py-2 rounded-full bg-zinc-900 text-[10px] font-bold text-white hover:bg-black transition-colors flex items-center gap-1.5 shadow-sm active:scale-95"
               >
-                <Sparkles size={10} /> Edit Avatar
-              </button>
-              <button
-                onClick={signOut}
-                className="px-3 py-1.5 rounded-full bg-zinc-100 text-[10px] font-semibold text-zinc-500 hover:text-red-500 hover:bg-red-50 transition-colors flex items-center gap-1 active:scale-95"
-              >
-                <LogOut size={10} /> Sign out
+                <Sparkles size={11} /> Edit Avatar & Vibe
               </button>
             </div>
           </div>
         </div>
 
-        {/* Emoji picker */}
-        <AnimatePresence>
-          {showEmojiPicker && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowEmojiPicker(false)} />
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                className="mt-3 z-50 bg-white border border-zinc-200 rounded-2xl p-3 grid grid-cols-8 gap-0.5 shadow-xl relative"
-              >
-                {EMOJI_OPTIONS.map(e => (
-                  <button
-                    key={e}
-                    onClick={() => { setVibeEmoji(e); setShowEmojiPicker(false); }}
-                    className="w-9 h-9 text-base flex items-center justify-center rounded-xl hover:bg-zinc-100 transition-colors active:scale-90"
-                  >
-                    {e}
-                  </button>
-                ))}
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+
       </div>
 
       {/* ═══════════════ PERSONAL INFO ═══════════════ */}
@@ -378,11 +435,10 @@ export default function ProfilePage() {
                     key={option}
                     type="button"
                     onClick={() => setGender(option)}
-                    className={`px-3 py-2 rounded-xl border text-[10px] font-semibold transition-all active:scale-95 ${
-                      gender === option
+                    className={`px-3 py-2 rounded-xl border text-[10px] font-semibold transition-all active:scale-95 ${gender === option
                         ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
                         : "bg-zinc-50 border-zinc-200 text-zinc-500 hover:border-zinc-300"
-                    }`}
+                      }`}
                   >
                     {option}
                   </button>
@@ -422,11 +478,10 @@ export default function ProfilePage() {
                 <button
                   key={tag}
                   onClick={() => toggleTag(tag)}
-                  className={`px-2.5 py-1.5 rounded-full border text-[10px] font-semibold transition-all active:scale-95 ${
-                    active
+                  className={`px-2.5 py-1.5 rounded-full border text-[10px] font-semibold transition-all active:scale-95 ${active
                       ? "bg-zinc-900 border-zinc-900 text-white"
                       : "bg-white border-zinc-200 text-zinc-500 hover:border-zinc-400"
-                  }`}
+                    }`}
                 >
                   {tag}
                 </button>
@@ -527,9 +582,8 @@ export default function ProfilePage() {
           whileTap={{ scale: 0.98 }}
           onClick={handleSave}
           disabled={isSaving}
-          className={`w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm ${
-            saveSuccess ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white hover:bg-black"
-          } disabled:opacity-50`}
+          className={`w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm ${saveSuccess ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white hover:bg-black"
+            } disabled:opacity-50`}
         >
           {isSaving ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -539,6 +593,17 @@ export default function ProfilePage() {
             "Save Profile"
           )}
         </motion.button>
+      </div>
+
+      {/* ═══════════════ SIGN OUT BUTTON ═══════════════ */}
+      <div className="mx-3 mt-3 mb-8">
+        <button
+          onClick={signOut}
+          className="w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 active:scale-[0.98] shadow-sm"
+        >
+          <LogOut size={16} />
+          Sign Out of Noirme
+        </button>
       </div>
 
       {/* ═══════════════ AVATAR PICKER MODAL ═══════════════ */}
@@ -614,22 +679,20 @@ export default function ProfilePage() {
                       <button
                         key={preset}
                         onClick={() => selectPresetSeed(preset)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all active:scale-95 ${
-                          activeSeedType === preset
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all active:scale-95 ${activeSeedType === preset
                             ? "bg-zinc-900 border-zinc-900 text-white"
                             : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                        }`}
+                          }`}
                       >
                         {preset}
                       </button>
                     ))}
                     <button
                       onClick={() => { setActiveSeedType("custom"); setTempSeed(customSeedText.trim() || user?.username || "user"); }}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all active:scale-95 ${
-                        activeSeedType === "custom"
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all active:scale-95 ${activeSeedType === "custom"
                           ? "bg-zinc-900 border-zinc-900 text-white"
                           : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                      }`}
+                        }`}
                     >
                       Custom
                     </button>
@@ -665,11 +728,10 @@ export default function ProfilePage() {
                         <button
                           key={style.id}
                           onClick={() => handleStyleChange(style.id)}
-                          className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all active:scale-95 ${
-                            isActive
+                          className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all active:scale-95 ${isActive
                               ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
                               : "bg-zinc-50 border-zinc-200/60 text-zinc-700 hover:border-zinc-300"
-                          }`}
+                            }`}
                         >
                           <div className="w-10 h-10 rounded-lg bg-white border border-zinc-200/50 overflow-hidden flex items-center justify-center">
                             <img src={stylePreviewUrl} alt={style.name} className="w-8 h-8 object-contain" />
