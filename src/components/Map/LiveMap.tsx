@@ -43,6 +43,19 @@ const INTENT_SUGGESTIONS = [
 
 const FALLBACK = { lat: 28.6139, lng: 77.209 }; // New Delhi fallback
 
+const MARKER_COLORS = [
+  "#FF5733", // Coral
+  "#33FF57", // Lime
+  "#3357FF", // Blue
+  "#F333FF", // Pink
+  "#FF33A1", // Rose
+  "#33FFF6", // Cyan
+  "#FFBD33", // Orange
+  "#8D33FF", // Purple
+  "#FF3333", // Red
+  "#33FFBD", // Mint
+];
+
 function MapController({ lat, lng, trigger }: { lat: number; lng: number; trigger: number }) {
   const map = useMap();
   useEffect(() => {
@@ -67,11 +80,15 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): 
 }
 
 // Creates a circular avatar marker using an img element
-function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: boolean) {
-  const ring = isMe ? "#000000" : "#e4e4e7";
+function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: boolean, userId: string = "default") {
+  // Use a simple hash of the userId to pick a consistent color for that user
+  const colorIndex = Math.abs(userId.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % MARKER_COLORS.length;
+  const randomColor = MARKER_COLORS[colorIndex];
+
+  const ring = isMe ? "#000000" : randomColor;
   const shadow = isMe
     ? "0 0 0 3px #000, 0 4px 16px rgba(0,0,0,0.25)"
-    : "0 2px 12px rgba(0,0,0,0.15)";
+    : `0 0 0 2px ${randomColor}, 0 2px 12px rgba(0,0,0,0.15)`;
 
   return L.divIcon({
     className: "",
@@ -114,28 +131,40 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string) {
     className: "",
     html: `
       <div style="position:relative; width:46px; height:46px; display:flex; align-items:center; justify-content:center;">
-        <!-- Pulsing ring effect -->
+        <!-- Glowing aura -->
+        <div style="
+          position:absolute;
+          width:52px;
+          height:52px;
+          border-radius:50%;
+          background: radial-gradient(circle, rgba(255,235,59,0.3) 0%, rgba(255,193,7,0) 70%);
+          animation: glow 2.5s infinite alternate ease-in-out;
+          z-index: 0;
+        "></div>
+        
+        <!-- Rotating ring -->
         <div style="
           position:absolute;
           width:44px;
           height:44px;
           border-radius:50%;
-          border: 2px solid #000;
-          opacity: 0.8;
-          animation: pulse 1.8s infinite ease-in-out;
-          z-index: 0;
+          border: 2px dashed #FFC107;
+          animation: spin 8s linear infinite;
+          z-index: 1;
         "></div>
+
+        <!-- Pulsing core -->
         <div style="
           position:relative;
-          width:38px;
-          height:38px;
+          width:36px;
+          height:36px;
           border-radius:50%;
-          border: 2.5px solid #000000;
-          box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+          border: 2px solid #000;
+          box-shadow: 0 0 15px rgba(255,193,7,0.5);
           overflow: hidden;
           background: #ffffff;
           cursor: pointer;
-          z-index: 1;
+          z-index: 2;
         ">
           <img
             src="${avatarUrl}"
@@ -144,20 +173,24 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string) {
           />
         </div>
         <div style="
-          position:absolute; bottom:0px; right:0px;
-          width:16px; height:16px; border-radius:50%;
-          background:white;
-          border: 1px solid #000000;
+          position:absolute; bottom:-1px; right:-1px;
+          width:18px; height:18px; border-radius:50%;
+          background: #FFC107;
+          border: 1.5px solid #000;
           display:flex; align-items:center; justify-content:center;
-          font-size:9px;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          z-index: 2;
+          font-size:10px;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+          z-index: 3;
         ">${vibeEmoji}</div>
       </div>
       <style>
-        @keyframes pulse {
-          0% { transform: scale(0.85); opacity: 0.8; }
-          100% { transform: scale(1.25); opacity: 0; }
+        @keyframes glow {
+          0% { transform: scale(0.9); opacity: 0.4; }
+          100% { transform: scale(1.1); opacity: 0.8; }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       </style>
     `,
@@ -598,7 +631,7 @@ export default function LiveMap() {
         {/* Me */}
         <Marker
           position={[location.lat, location.lng]}
-          icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true)}
+          icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, user?.id || "me")}
         >
           <Popup>
             <div className="flex items-center gap-2.5 p-2.5 pr-7 bg-white">
@@ -624,7 +657,7 @@ export default function LiveMap() {
             <Marker
               key={u.user_id || idx}
               position={[u.lat, u.lng]}
-              icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false)}
+              icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, u.user_id)}
             >
               <Popup>
                 <div className="flex items-center gap-2.5 p-2.5 pr-7 bg-white">
