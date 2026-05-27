@@ -253,26 +253,16 @@ function matchesFilter(intent: any, key: string): boolean {
 
 async function getIPLocation(): Promise<{ lat: number; lng: number }> {
   try {
-    const res = await fetch("https://ipapi.co/json/");
-    if (!res.ok) throw new Error("ipapi failed");
+    const res = await fetch("/api/geo");
+    if (!res.ok) throw new Error("Server-side geo fetch failed");
     const data = await res.json();
-    if (data.latitude && data.longitude) {
-      return { lat: data.latitude, lng: data.longitude };
+    if (data.lat && data.lng) {
+      return { lat: data.lat, lng: data.lng };
     }
-    throw new Error("Invalid lat/lng");
+    throw new Error("Invalid server geo format");
   } catch (e) {
-    try {
-      const res = await fetch("https://ipinfo.io/json");
-      if (!res.ok) throw new Error("ipinfo failed");
-      const data = await res.json();
-      if (data.loc) {
-        const [latStr, lngStr] = data.loc.split(",");
-        return { lat: parseFloat(latStr), lng: parseFloat(lngStr) };
-      }
-    } catch (err) {
-      console.warn("All IP Geo failed", err);
-    }
-    throw new Error("IP geolocation failed completely");
+    console.warn("Server-side IP geo fetch failed, using fallback:", e);
+    return { lat: 28.6139, lng: 77.209 };
   }
 }
 
