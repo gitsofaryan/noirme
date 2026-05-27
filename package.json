@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "concurrently \"next dev --webpack\" \"npx tsx src/server/socket-server.ts\"",
+    "dev:ws": "npx tsx src/server/socket-server.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -17,6 +18,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-leaflet": "^5.0.0",
+    "redis": "^5.12.1",
     "ws": "^8.21.0"
   },
   "devDependencies": {
@@ -26,9 +28,11 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
+    "tsx": "^4.22.3",
     "typescript": "^5"
   }
 }
