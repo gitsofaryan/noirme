@@ -10,6 +10,17 @@ process.on("unhandledRejection", (reason) => {
   console.error("[noirme] UNHANDLED REJECTION (kept alive):", reason);
 });
 
+function sanitizeInput(input: string | undefined | null): string {
+  if (!input) return "";
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;")
+    .replace(/\//g, "&#x2F;");
+}
+
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const REDIS_URL = process.env.REDIS_URL;
 
@@ -183,13 +194,33 @@ async function sendSync(ws: WebSocket) {
 
   if (useRedis && redisPub) {
     try {
-      const rawUsers = await redisPub.hGetAll("noirme:active_users");
-      allUsers = Object.values(rawUsers).map((u) => JSON.parse(u));
+      const maxRange = Math.max(10, Math.min(30, clientInfo.radarRange || 15));
+      
+      // Geo-spatial query for active users within viewer's scan range
+      const nearbyUserIds = await redisPub.geoSearch(
+        "noirme:user_locations",
+        { latitude: clientInfo.lat, longitude: clientInfo.lng },
+        { radius: maxRange, unit: "km" }
+      );
 
-      const rawHotspots = await redisPub.hGetAll("noirme:hotspots");
-      allHotspots = Object.values(rawHotspots).map((h) => JSON.parse(h));
+      if (nearbyUserIds && nearbyUserIds.length > 0) {
+        const rawUsers = (await redisPub.hMGet("noirme:active_users", nearbyUserIds)) as any[];
+        allUsers = rawUsers.filter(Boolean).map((u: any) => JSON.parse(u));
+      }
+
+      // Geo-spatial query for hotspots within viewer's scan range
+      const nearbyHotspotIds = await redisPub.geoSearch(
+        "noirme:hotspot_locations",
+        { latitude: clientInfo.lat, longitude: clientInfo.lng },
+        { radius: maxRange, unit: "km" }
+      );
+
+      if (nearbyHotspotIds && nearbyHotspotIds.length > 0) {
+        const rawHotspots = (await redisPub.hMGet("noirme:hotspots", nearbyHotspotIds)) as any[];
+        allHotspots = rawHotspots.filter(Boolean).map((h: any) => JSON.parse(h));
+      }
     } catch (e) {
-      console.error("[noirme] Redis sync failed:", e);
+      console.error("[noirme] Redis geo sync failed, falling back:", e);
     }
   } else {
     allUsers = Array.from(clientsLocal.values());
@@ -296,11 +327,11 @@ wss.on("connection", async (ws: any) => {
           lat: data.lat,
           lng: data.lng,
           last_seen: Date.now(),
-          bio: data.bio,
+          bio: sanitizeInput(data.bio),
           selectedTags: data.selectedTags,
           gender: data.gender,
           age: data.age,
-          blockedUsers: data.blockedUsers,
+          blockedUsers: data.blockedUsers || [],
           radarRange: typeof data.radarRange === "number" ? data.radarRange : undefined,
           hotspotRange: typeof data.hotspotRange === "number" ? data.hotspotRange : undefined,
         };
@@ -308,9 +339,87 @@ wss.on("connection", async (ws: any) => {
         // Cache locally for connection management
         clientsLocal.set(ws, info);
 
+        // Instant Kick on Block
+        const infoBlocks = info.blockedUsers || [];
+        if (infoBlocks.length > 0) {
+          if (useRedis && redisPub) {
+            try {
+              const rawHotspots = await redisPub.hGetAll("noirme:hotspots");
+              for (const [rid, rawH] of Object.entries(rawHotspots)) {
+                const hotspot: Hotspot = JSON.parse(rawH);
+                const isHostBlocker = hotspot.host_id === info.user_id;
+                let changed = false;
+                
+                if (isHostBlocker) {
+                  const initialLen = hotspot.requests.length;
+                  hotspot.requests = hotspot.requests.filter(r => !infoBlocks.includes(r.user_id));
+                  if (hotspot.requests.length !== initialLen) changed = true;
+                } else {
+                  const isGuestBlocked = infoBlocks.includes(hotspot.host_id);
+                  if (isGuestBlocked) {
+                    const initialLen = hotspot.requests.length;
+                    hotspot.requests = hotspot.requests.filter(r => r.user_id !== info.user_id);
+                    if (hotspot.requests.length !== initialLen) changed = true;
+                  }
+                }
+
+                if (changed) {
+                  await redisPub.hSet("noirme:hotspots", rid, JSON.stringify(hotspot));
+                  await redisPub.publish(
+                    "noirme:chat_messages",
+                    JSON.stringify({
+                      roomId: rid,
+                      rosterUpdateOnly: true,
+                      hotspot,
+                    })
+                  );
+                }
+              }
+            } catch (e) {
+              console.error("[noirme] Kick on block failed:", e);
+            }
+          } else {
+            // Local fallback
+            for (const [rid, hotspot] of hotspotsLocal.entries()) {
+              const isHostBlocker = hotspot.host_id === info.user_id;
+              let changed = false;
+              if (isHostBlocker) {
+                const initialLen = hotspot.requests.length;
+                hotspot.requests = hotspot.requests.filter(r => !infoBlocks.includes(r.user_id));
+                if (hotspot.requests.length !== initialLen) changed = true;
+              } else {
+                const isGuestBlocked = infoBlocks.includes(hotspot.host_id);
+                if (isGuestBlocked) {
+                  const initialLen = hotspot.requests.length;
+                  hotspot.requests = hotspot.requests.filter(r => r.user_id !== info.user_id);
+                  if (hotspot.requests.length !== initialLen) changed = true;
+                }
+              }
+
+              if (changed) {
+                const localUids = hotspot.requests
+                  .filter((r) => r.status === "accepted")
+                  .map((r) => r.user_id);
+                localUids.push(hotspot.host_id);
+                localUids.forEach((uid) => {
+                  const cs = findLocalSocketByUserId(uid);
+                  if (cs) cs.send(JSON.stringify({ type: "room_sync", roomId: rid, hotspot }));
+                });
+              }
+            }
+          }
+        }
+
         if (useRedis && redisPub) {
           // Store globally in Redis and publish update
           await redisPub.hSet("noirme:active_users", info.user_id, JSON.stringify(info));
+
+          // Write to Redis Geo-Spatial Index
+          await redisPub.geoAdd("noirme:user_locations", {
+            longitude: info.lng,
+            latitude: info.lat,
+            member: info.user_id,
+          });
 
           // Throttle broadcasts to max 1 per 2 seconds per user to avoid flooding
           const now = Date.now();
@@ -344,7 +453,7 @@ wss.on("connection", async (ws: any) => {
           host_id: hostId,
           host_username: data.username,
           host_avatar: data.avatar_url || "",
-          title: data.title,
+          title: sanitizeInput(data.title),
           vibeEmoji: data.vibeEmoji || "☕",
           lat: data.lat,
           lng: data.lng,
@@ -359,7 +468,7 @@ wss.on("connection", async (ws: any) => {
             },
           ],
           messages: [],
-          host_bio: data.host_bio,
+          host_bio: sanitizeInput(data.host_bio),
           host_tags: data.host_tags,
           host_gender: data.host_gender,
           host_age: data.host_age,
@@ -368,6 +477,14 @@ wss.on("connection", async (ws: any) => {
 
         if (useRedis && redisPub) {
           await redisPub.hSet("noirme:hotspots", roomId, JSON.stringify(newHotspot));
+          
+          // Write to Redis Geo-Spatial Index for Hotspots
+          await redisPub.geoAdd("noirme:hotspot_locations", {
+            longitude: newHotspot.lng,
+            latitude: newHotspot.lat,
+            member: roomId,
+          });
+
           await publishHotspotUpdate();
 
           // Direct reply to host
@@ -523,6 +640,7 @@ wss.on("connection", async (ws: any) => {
         }
       } else if (data.type === "send_message") {
         const { roomId, text, sender_id, sender_username, sender_avatar } = data;
+        const sanitizedText = sanitizeInput(text);
 
         if (useRedis && redisPub) {
           const rawHotspot = await redisPub.hGet("noirme:hotspots", roomId);
@@ -540,7 +658,7 @@ wss.on("connection", async (ws: any) => {
               sender_id,
               sender_username,
               sender_avatar: sender_avatar || "",
-              text,
+              text: sanitizedText,
               timestamp: Date.now(),
             };
 
@@ -573,7 +691,7 @@ wss.on("connection", async (ws: any) => {
               sender_id,
               sender_username,
               sender_avatar: sender_avatar || "",
-              text,
+              text: sanitizedText,
               timestamp: Date.now(),
             };
 
@@ -693,6 +811,7 @@ wss.on("connection", async (ws: any) => {
       if (useRedis && redisPub) {
         try {
           await redisPub.hDel("noirme:active_users", info.user_id);
+          await redisPub.zRem("noirme:user_locations", info.user_id);
           await redisPub.publish(
             "noirme:location_updates",
             JSON.stringify({

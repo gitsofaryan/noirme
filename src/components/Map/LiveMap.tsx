@@ -469,14 +469,21 @@ export default function LiveMap() {
   };
   const locationOffsetRef = useRef<{ latOffset: number; lngOffset: number } | null>(null);
 
-  const getStableOffset = () => {
-    if (!locationOffsetRef.current) {
-      locationOffsetRef.current = {
-        latOffset: (Math.random() - 0.5) * 0.0018,
-        lngOffset: (Math.random() - 0.5) * 0.0018,
-      };
-    }
-    return locationOffsetRef.current;
+  const getStableOffset = (actualLat: number, actualLng: number) => {
+    const gridScale = 0.0045; // ~500m grid cell boundaries
+    const cellLat = Math.floor(actualLat / gridScale);
+    const cellLng = Math.floor(actualLng / gridScale);
+
+    // Seed-based deterministic hashing to get a stable offset per grid cell
+    const seed1 = (cellLat * 73856093) ^ (cellLng * 19349663);
+    const rand1 = (Math.abs(Math.sin(seed1) * 1000) % 1) - 0.5;
+    const latOffset = rand1 * 0.0018;
+
+    const seed2 = (cellLat * 83492791) ^ (cellLng * 73856093);
+    const rand2 = (Math.abs(Math.sin(seed2) * 1000) % 1) - 0.5;
+    const lngOffset = rand2 * 0.0018;
+
+    return { latOffset, lngOffset };
   };
 
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(() => {
@@ -505,6 +512,8 @@ export default function LiveMap() {
 
   const [locStatus, setLocStatus] = useState<"waiting" | "granted" | "denied">("waiting");
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
+  const [offlineMessages, setOfflineMessages] = useState<any[]>([]);
+  const offlineMessagesRef = useRef<any[]>([]);
   const [intents, setIntents] = useState<any[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const [socketReady, setSocketReady] = useState(false);
@@ -579,7 +588,7 @@ export default function LiveMap() {
     getIPLocation()
       .then((ipLoc) => {
         if (!finished && ipLoc) {
-          const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
+          const offset = maskLocation ? getStableOffset(ipLoc.lat, ipLoc.lng) : { latOffset: 0, lngOffset: 0 };
           const newLat = ipLoc.lat + offset.latOffset;
           const newLng = ipLoc.lng + offset.lngOffset;
           setLocation((prev) => {
@@ -602,7 +611,7 @@ export default function LiveMap() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (!finished) {
-          const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
+          const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
           const newLat = pos.coords.latitude + offset.latOffset;
           const newLng = pos.coords.longitude + offset.lngOffset;
           setLocation({ lat: newLat, lng: newLng });
@@ -616,7 +625,7 @@ export default function LiveMap() {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         finished = true;
-        const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
+        const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
         const newLat = pos.coords.latitude + offset.latOffset;
         const newLng = pos.coords.longitude + offset.lngOffset;
 
@@ -652,6 +661,7 @@ export default function LiveMap() {
     let mounted = true;
     let ws: WebSocket | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryCount = 0; // Exponential retry counter
 
     // Build an anonymous stable ID if not signed in
     let anonId = typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : null;
@@ -675,14 +685,38 @@ export default function LiveMap() {
         }
       }
 
-      console.log(`[noirme] Connecting to WebSocket: ${wsUrl}`);
+      console.log(`[noirme] Connecting to WebSocket: ${wsUrl} (Retry count: ${retryCount})`);
       ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
       ws.onopen = () => {
         if (!mounted) return;
         setSocketReady(true);
-        if (ws) ws.send(JSON.stringify({ type: "request_sync" }));
+        retryCount = 0; // Reset backoff count on success
+        
+        const activeWs = ws;
+        if (activeWs) {
+          activeWs.send(JSON.stringify({ type: "request_sync" }));
+
+          // Flush offline outbox messages upon successful socket open
+          if (offlineMessagesRef.current.length > 0) {
+            console.log(`[noirme] Offline outbox has ${offlineMessagesRef.current.length} messages. Flushing...`);
+            offlineMessagesRef.current.forEach((item) => {
+              activeWs.send(
+                JSON.stringify({
+                  type: "send_message",
+                  roomId: item.roomId,
+                  text: item.msg.text,
+                  sender_id: item.msg.sender_id,
+                  sender_username: item.msg.sender_username,
+                  sender_avatar: item.msg.sender_avatar,
+                })
+              );
+            });
+            offlineMessagesRef.current = [];
+            setOfflineMessages([]);
+          }
+        }
       };
 
       ws.onmessage = (ev) => {
@@ -753,10 +787,12 @@ export default function LiveMap() {
             if (selectedHotspotRef.current && selectedHotspotRef.current.id === msg.roomId) {
               setSelectedHotspot((prev: any) => {
                 if (!prev) return null;
-                if (prev.messages.some((m: any) => m.id === msg.message.id)) return prev;
+                // Filter out any matching offline optimistic messages from log
+                const rawMsgs = prev.messages.filter((m: any) => !m.id.startsWith("msg_offline_") || m.text !== msg.message.text);
+                if (rawMsgs.some((m: any) => m.id === msg.message.id)) return prev;
                 return {
                   ...prev,
-                  messages: [...prev.messages, msg.message],
+                  messages: [...rawMsgs, msg.message],
                 };
               });
             }
@@ -784,7 +820,12 @@ export default function LiveMap() {
         if (!mounted) return;
         setSocketReady(false);
         socketRef.current = null;
-        retryTimer = setTimeout(connect, 3000);
+        
+        // Exponential backoff with randomized jitter (+/- 500ms)
+        const delay = Math.min(10000, Math.pow(2, retryCount) * 1000) + (Math.random() - 0.5) * 1000;
+        console.log(`[noirme] Socket closed. Reconnecting in ${Math.round(delay)}ms...`);
+        retryCount++;
+        retryTimer = setTimeout(connect, Math.max(1000, delay));
       };
     };
 
@@ -799,9 +840,7 @@ export default function LiveMap() {
       mounted = false;
       window.removeEventListener("beforeunload", handleUnload);
       if (retryTimer) clearTimeout(retryTimer);
-      ws?.close();
-      socketRef.current = null;
-      setSocketReady(false);
+      if (ws) ws.close();
     };
     // Only reconnect on identity change — NOT on profile edits
   }, [!!location, user?.username, maskLocation]);
@@ -928,18 +967,63 @@ export default function LiveMap() {
   };
 
   const sendMessage = (text: string) => {
-    const ws = socketRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN || !selectedHotspot || !text.trim()) return;
+    if (!text.trim() || !selectedHotspot) return;
+
+    // Trigger physical haptic click feedback on mobile devices
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate(10);
+    }
+
+    // Client-side XSS tag escaping
+    const sanitizedText = text.trim()
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
     const userId =
       user?.id ||
       user?.username ||
       (typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : null) ||
       "anon";
+
+    const ws = socketRef.current;
+    const isSocketConnected = ws && ws.readyState === WebSocket.OPEN;
+
+    if (!isSocketConnected) {
+      // Local optimistic message object
+      const offlineMsg = {
+        id: `msg_offline_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        sender_id: userId,
+        sender_username: handle,
+        sender_avatar: myAvatarUrl,
+        text: sanitizedText,
+        timestamp: Date.now(),
+        isOffline: true,
+      };
+
+      // Buffer inside Ref queue and update React state
+      const queueItem = { roomId: selectedHotspot.id, msg: offlineMsg };
+      offlineMessagesRef.current.push(queueItem);
+      setOfflineMessages([...offlineMessagesRef.current]);
+
+      // Optimistically append the message to chat log immediately
+      setSelectedHotspot((prev: any) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          messages: [...prev.messages, offlineMsg],
+        };
+      });
+
+      addToast("Offline: Message queued.", "default");
+      return;
+    }
+
     ws.send(
       JSON.stringify({
         type: "send_message",
         roomId: selectedHotspot.id,
-        text: text.trim(),
+        text: sanitizedText,
         sender_id: userId,
         sender_username: handle,
         sender_avatar: myAvatarUrl,
@@ -976,7 +1060,7 @@ export default function LiveMap() {
     getIPLocation()
       .then((ipLoc) => {
         if (!finished && ipLoc) {
-          const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
+          const offset = maskLocation ? getStableOffset(ipLoc.lat, ipLoc.lng) : { latOffset: 0, lngOffset: 0 };
           const newCoords = {
             lat: ipLoc.lat + offset.latOffset,
             lng: ipLoc.lng + offset.lngOffset,
@@ -992,7 +1076,7 @@ export default function LiveMap() {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           finished = true;
-          const offset = maskLocation ? getStableOffset() : { latOffset: 0, lngOffset: 0 };
+          const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
           const newCoords = {
             lat: pos.coords.latitude + offset.latOffset,
             lng: pos.coords.longitude + offset.lngOffset,
@@ -1161,7 +1245,12 @@ export default function LiveMap() {
                 {VIBE_FILTERS.map((f) => (
                   <button
                     key={f.key}
-                    onClick={() => setSelectedFilter(f.key)}
+                    onClick={() => {
+                      if (typeof navigator !== "undefined" && navigator.vibrate) {
+                        navigator.vibrate(8);
+                      }
+                      setSelectedFilter(f.key);
+                    }}
                     className={`px-3.5 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap shrink-0 transition-all duration-150 ${selectedFilter === f.key
                       ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
                       : "bg-white/95 border-zinc-200 text-zinc-600 shadow-sm"
@@ -1247,7 +1336,12 @@ export default function LiveMap() {
             <div className="pointer-events-auto absolute bottom-20 right-5 flex flex-col items-center gap-4">
               {/* Refresh Compass */}
               <button
-                onClick={refreshRadar}
+                onClick={() => {
+                  if (typeof navigator !== "undefined" && navigator.vibrate) {
+                    navigator.vibrate(12);
+                  }
+                  refreshRadar();
+                }}
                 className="w-12 h-12 rounded-full bg-white/95 backdrop-blur-md border border-zinc-200 shadow-[0_4px_15px_rgba(0,0,0,0.1)] flex items-center justify-center text-zinc-500 hover:text-zinc-900 transition-colors active:scale-90"
                 title="Refresh Radar"
               >
@@ -1918,18 +2012,25 @@ function ChatRoom({
                     </span>
                   )}
                   <div
-                    className={`px-3.5 py-2 text-xs leading-normal shadow-sm ${isMe
+                    className={`px-3.5 py-2 text-xs leading-normal shadow-sm transition-all duration-300 ${isMe
                       ? "bg-zinc-900 text-white rounded-2xl rounded-tr-none font-medium"
                       : "bg-white border border-zinc-200/60 text-zinc-800 rounded-2xl rounded-tl-none font-medium"
-                      }`}
+                      } ${m.isOffline ? "opacity-50 border border-dashed border-zinc-350 bg-zinc-100" : ""}`}
                   >
                     {m.text}
                   </div>
-                  <span className="text-[7px] text-zinc-400 mt-0.5 px-1 font-semibold">
-                    {new Date(m.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                  <span className="text-[7px] text-zinc-400 mt-0.5 px-1 font-semibold flex items-center gap-1">
+                    {m.isOffline ? (
+                      <span className="text-zinc-550 animate-pulse flex items-center gap-1 font-bold">
+                        <span className="inline-block w-1 h-1 rounded-full bg-zinc-400 animate-ping" />
+                        Queued
+                      </span>
+                    ) : (
+                      new Date(m.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    )}
                   </span>
                 </div>
               </div>
