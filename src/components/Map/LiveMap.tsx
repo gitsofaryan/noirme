@@ -59,9 +59,9 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): 
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -371,7 +371,7 @@ export default function LiveMap() {
         }
       };
 
-      ws.onerror = () => {};
+      ws.onerror = () => { };
 
       ws.onclose = () => {
         if (!mounted) return;
@@ -667,9 +667,8 @@ export default function LiveMap() {
       <div className="absolute top-4 left-4 right-4 z-[400] flex justify-between items-center gap-2">
         <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-white border border-zinc-200 shadow-sm">
           <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              socketReady ? "bg-emerald-500 animate-pulse" : "bg-amber-400 animate-pulse"
-            }`}
+            className={`w-1.5 h-1.5 rounded-full ${socketReady ? "bg-emerald-500 animate-pulse" : "bg-amber-400 animate-pulse"
+              }`}
           />
           <span className="text-[10px] font-bold tracking-widest text-zinc-600">
             {socketReady ? "LIVE" : "CONNECTING…"}
@@ -699,11 +698,10 @@ export default function LiveMap() {
             <button
               key={f.key}
               onClick={() => setSelectedFilter(f.key)}
-              className={`px-3.5 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap shrink-0 transition-all duration-150 ${
-                selectedFilter === f.key
+              className={`px-3.5 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap shrink-0 transition-all duration-150 ${selectedFilter === f.key
                   ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
                   : "bg-white/95 border-zinc-200 text-zinc-600 shadow-sm"
-              }`}
+                }`}
             >
               {f.label}
             </button>
@@ -770,11 +768,10 @@ export default function LiveMap() {
                     <button
                       key={s}
                       onClick={() => setIntentText(s)}
-                      className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-colors ${
-                        intentText === s
+                      className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-colors ${intentText === s
                           ? "bg-zinc-900 border-zinc-900 text-white"
                           : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400"
-                      }`}
+                        }`}
                     >
                       {s}
                     </button>
@@ -874,7 +871,7 @@ export default function LiveMap() {
                       <Users size={12} /> Join Requests
                     </h4>
                     {selectedHotspot.requests.filter((r: any) => r.status === "pending").length ===
-                    0 ? (
+                      0 ? (
                       <p className="text-[11px] text-zinc-400 bg-zinc-50 rounded-2xl p-4 text-center border border-dashed border-zinc-100">
                         Waiting for nearby requests to join...
                       </p>
@@ -1128,9 +1125,8 @@ function ChatRoom({
             return (
               <div
                 key={m.id}
-                className={`flex gap-2 max-w-[85%] ${
-                  isMe ? "self-end flex-row-reverse" : "self-start"
-                }`}
+                className={`flex gap-2 max-w-[85%] ${isMe ? "self-end flex-row-reverse" : "self-start"
+                  }`}
               >
                 {!isMe && (
                   <img
@@ -1146,11 +1142,10 @@ function ChatRoom({
                     </span>
                   )}
                   <div
-                    className={`px-3.5 py-2 text-xs leading-normal shadow-sm ${
-                      isMe
+                    className={`px-3.5 py-2 text-xs leading-normal shadow-sm ${isMe
                         ? "bg-zinc-900 text-white rounded-2xl rounded-tr-none font-medium"
                         : "bg-white border border-zinc-200/60 text-zinc-800 rounded-2xl rounded-tl-none font-medium"
-                    }`}
+                      }`}
                   >
                     {m.text}
                   </div>
