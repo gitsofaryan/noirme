@@ -541,9 +541,9 @@ export default function LiveMap() {
         zoom={15}
         style={{ height: "100%", width: "100%" }}
         zoomControl={false}
+        attributionControl={false}
       >
         <TileLayer
-          attribution='© <a href="https://openstreetmap.org">OpenStreetMap</a>'
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
         />
         <MapController lat={location.lat} lng={location.lng} trigger={recenterTrigger} />
@@ -663,13 +663,7 @@ export default function LiveMap() {
         </div>
       </div>
 
-      {/* Location mask notice */}
-      {maskLocation && (
-        <div className="absolute top-[118px] left-4 right-4 z-[400] bg-white/90 border border-zinc-200 rounded-xl px-3 py-1.5 flex items-center gap-1.5 backdrop-blur-sm pointer-events-none shadow-sm">
-          <Shield size={10} className="text-zinc-400 shrink-0" />
-          <span className="text-[9px] font-semibold text-zinc-400">Approximate location active</span>
-        </div>
-      )}
+
 
       {/* FAB (above navbar) */}
       {isSignedIn && (
