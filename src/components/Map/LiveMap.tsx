@@ -110,6 +110,7 @@ export default function LiveMap() {
   const { isSignedIn, user, profile, isLoading } = useAuth();
 
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locStatus, setLocStatus] = useState<"waiting" | "granted" | "denied">("waiting");
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [intents, setIntents] = useState<any[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
@@ -123,30 +124,43 @@ export default function LiveMap() {
   const maskLocation = profile?.maskLocation ?? true;
   const vibeEmoji = profile?.vibeEmoji ?? "☕";
   const handle = profile?.handle ?? user?.username ?? "";
-  const myAvatarUrl = profile?.avatar_url || (user ? getAvatarUrl(user.username) : "");
+  const myAvatarUrl = profile?.avatar_url || (user ? getAvatarUrl(user.username) : getAvatarUrl("anon"));
 
-  // — Get location
+  // — Get location (with clear denied fallback)
   useEffect(() => {
+    const FALLBACK = { lat: 28.6139, lng: 77.209 }; // New Delhi fallback
     if (!navigator.geolocation) {
-      setLocation({ lat: 28.6139, lng: 77.209 });
-      return;
+      setLocation(FALLBACK); setLocStatus("denied"); return;
     }
+    // 8s hard timeout in case browser never fires the callback
+    const timer = setTimeout(() => {
+      setLocation(prev => prev ?? FALLBACK);
+      setLocStatus(prev => prev === "waiting" ? "denied" : prev);
+    }, 8000);
+
     navigator.geolocation.getCurrentPosition(
       pos => {
+        clearTimeout(timer);
         const offset = maskLocation ? 0.0018 : 0;
         setLocation({
           lat: pos.coords.latitude + (Math.random() - 0.5) * offset,
           lng: pos.coords.longitude + (Math.random() - 0.5) * offset,
         });
+        setLocStatus("granted");
       },
-      () => setLocation({ lat: 28.6139, lng: 77.209 }),
+      () => {
+        clearTimeout(timer);
+        setLocation(FALLBACK);
+        setLocStatus("denied");
+      },
       { enableHighAccuracy: false, timeout: 7000, maximumAge: 30000 }
     );
+    return () => clearTimeout(timer);
   }, [maskLocation]);
 
-  // ── WebSocket: connect always (anonymous ok), retry on close ──────────────
+  // ── WebSocket: connect on mount, no location required to start ─────────────
   useEffect(() => {
-    // Need location before we can broadcast position
+    // Start connecting immediately — location is sent once available
     if (!location) return;
 
     let mounted = true;
@@ -259,9 +273,29 @@ export default function LiveMap() {
 
   if (isLoading || !location) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-white gap-3">
-        <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
-        <p className="text-xs text-zinc-400 font-medium">{isLoading ? "Loading..." : "Getting your location..."}</p>
+      <div className="flex flex-col items-center justify-center h-full bg-white gap-4 px-8 text-center">
+        {locStatus === "waiting" ? (
+          <>
+            <motion.div
+              animate={{ scale: [1, 1.12, 1] }}
+              transition={{ repeat: Infinity, duration: 1.6 }}
+              className="w-14 h-14 rounded-full bg-zinc-100 flex items-center justify-center"
+            >
+              <Compass className="w-6 h-6 text-zinc-500" strokeWidth={1.5} />
+            </motion.div>
+            <div>
+              <p className="text-sm font-bold text-zinc-900">Allow Location</p>
+              <p className="text-xs text-zinc-400 mt-1 leading-relaxed max-w-[220px]">
+                Tap <strong>Allow</strong> in the browser prompt so we can put you on the radar.
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            <Loader2 className="w-6 h-6 animate-spin text-zinc-300" />
+            <p className="text-xs text-zinc-400">Loading map…</p>
+          </>
+        )}
       </div>
     );
   }
