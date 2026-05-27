@@ -26,9 +26,13 @@ delete (L.Icon.Default.prototype as any)._getIconUrl;
 const VIBE_FILTERS = [
   { label: "All", key: "all" },
   { label: "Café ☕", key: "cafe" },
+  { label: "Dating 💕", key: "dating" },
+  { label: "Gaming 🎮", key: "gaming" },
+  { label: "Movies 🎬", key: "movies" },
   { label: "Study 📚", key: "study" },
   { label: "Music 🎵", key: "music" },
   { label: "Sports 🏃", key: "sports" },
+  { label: "Chill 🌙", key: "chill" },
 ];
 
 const INTENT_SUGGESTIONS = [
@@ -40,6 +44,14 @@ const INTENT_SUGGESTIONS = [
   "Midnight ramen? 🍜",
   "Gym buddy 🏋️",
   "Coding together? 💻",
+  "Movie night? 🍿",
+  "Let's play chess ♟️",
+  "Coffee date? ☕💕",
+  "Anime marathon 🎌",
+  "Board games tonight 🎲",
+  "Sunset walk 🌅",
+  "Karaoke time 🎤",
+  "Cooking together 🍳",
 ];
 
 const FALLBACK = { lat: 28.6139, lng: 77.209 }; // New Delhi fallback
@@ -117,6 +129,13 @@ function MapController({
       map.off("dragend", onDragEnd);
     };
   }, [map, setFollowUser, setIsInteracting]);
+
+  // panTo when coordinates update if followUser is true
+  useEffect(() => {
+    if (followUser) {
+      map.panTo([lat, lng], { animate: true, duration: 0.5 });
+    }
+  }, [lat, lng, followUser, map]);
 
   // flyTo on trigger change (recenter compass click)
   useEffect(() => {
@@ -297,22 +316,23 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string, zoom: num
   });
 }
 
+const FILTER_KEYWORDS: Record<string, string[]> = {
+  cafe: ["coffee", "chai", "boba", "tea", "ramen", "food", "eat", "matcha", "latte", "café", "cafe", "brunch", "lunch", "dinner", "cook"],
+  dating: ["date", "dating", "love", "crush", "vibe", "connection", "hangout", "chill", "flirt", "coffee date", "sunset", "romantic"],
+  gaming: ["game", "gaming", "chess", "board", "cards", "esport", "valorant", "minecraft", "ps5", "xbox", "pubg", "bgmi", "cod", "fortnite", "dice", "ludo"],
+  movies: ["movie", "film", "cinema", "netflix", "anime", "watch", "series", "binge", "popcorn", "marvel", "bollywood", "horror", "comedy", "thriller"],
+  study: ["study", "code", "coding", "book", "exam", "learn", "grind", "library", "homework", "project", "hackathon", "dsa", "leetcode"],
+  music: ["guitar", "jam", "music", "vinyl", "sing", "beat", "lofi", "karaoke", "concert", "piano", "rap", "podcast", "spotify"],
+  sports: ["gym", "run", "walk", "bike", "swim", "sport", "workout", "yoga", "cricket", "football", "basketball", "badminton", "trek", "hike"],
+  chill: ["chill", "vibe", "hangout", "drive", "explore", "roam", "wander", "sunset", "night", "midnight", "smoke", "terrace", "rooftop"],
+};
+
 function matchesFilter(intent: any, key: string): boolean {
   if (key === "all") return true;
+  const keywords = FILTER_KEYWORDS[key];
+  if (!keywords) return true;
   const t = (intent.title || "").toLowerCase();
-  if (key === "cafe")
-    return ["coffee", "chai", "boba", "tea", "ramen", "food", "eat", "matcha", "latte"].some((k) =>
-      t.includes(k)
-    );
-  if (key === "study")
-    return ["study", "code", "coding", "book", "exam", "learn", "grind"].some((k) => t.includes(k));
-  if (key === "music")
-    return ["guitar", "jam", "music", "vinyl", "sing", "beat", "lofi"].some((k) => t.includes(k));
-  if (key === "sports")
-    return ["gym", "run", "walk", "bike", "swim", "sport", "workout", "yoga"].some((k) =>
-      t.includes(k)
-    );
-  return true;
+  return keywords.some((k) => t.includes(k));
 }
 
 async function getIPLocation(): Promise<{ lat: number; lng: number } | null> {
@@ -637,7 +657,7 @@ export default function LiveMap() {
       ws.onopen = () => {
         if (!mounted) return;
         setSocketReady(true);
-        ws.send(JSON.stringify({ type: "request_sync" }));
+        if (ws) ws.send(JSON.stringify({ type: "request_sync" }));
       };
 
       ws.onmessage = (ev) => {
@@ -1141,9 +1161,13 @@ export default function LiveMap() {
               </div>
 
               {/* Nearby Count */}
-              <div className="flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm px-2.5 py-1.5 rounded-full border border-zinc-200 shadow-sm self-start">
+              <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm px-2.5 py-1.5 rounded-full border border-zinc-200 shadow-sm self-start">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${socketReady ? "bg-emerald-500 animate-pulse" : "bg-amber-400 animate-pulse"}`} />
                 <span className="text-[11px] font-bold text-zinc-900 leading-none">
                   {filteredUsers.length}
+                </span>
+                <span className="text-[9px] font-semibold text-zinc-400 leading-none">
+                  nearby
                 </span>
               </div>
             </div>
@@ -1263,8 +1287,8 @@ export default function LiveMap() {
                   can request to join.
                 </p>
 
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {INTENT_SUGGESTIONS.slice(0, 4).map((s) => (
+                <div className="flex flex-wrap gap-2 mb-4 max-h-[120px] overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
+                  {INTENT_SUGGESTIONS.map((s) => (
                     <button
                       key={s}
                       onClick={() => setIntentText(s)}

@@ -66,6 +66,7 @@ interface Hotspot {
 // ── In-Memory Fallback State (used if Redis is inactive/not configured) ──────
 const clientsLocal = new Map<WebSocket, ClientInfo>();
 const hotspotsLocal = new Map<string, Hotspot>();
+const lastBroadcastTime = new Map<string, number>(); // userId -> timestamp for throttle
 
 // ── Redis Clients ────────────────────────────────────────────────────────────
 let redisPub: ReturnType<typeof createClient> | null = null;
@@ -290,16 +291,28 @@ wss.on("connection", async (ws: any) => {
         if (useRedis && redisPub) {
           // Store globally in Redis and publish update
           await redisPub.hSet("noirme:active_users", info.user_id, JSON.stringify(info));
-          await redisPub.publish(
-            "noirme:location_updates",
-            JSON.stringify({
-              type: "location_update",
-              data: info,
-            })
-          );
+
+          // Throttle broadcasts to max 1 per 2 seconds per user to avoid flooding
+          const now = Date.now();
+          const lastTime = lastBroadcastTime.get(info.user_id) || 0;
+          if (now - lastTime >= 2000) {
+            lastBroadcastTime.set(info.user_id, now);
+            await redisPub.publish(
+              "noirme:location_updates",
+              JSON.stringify({
+                type: "location_update",
+                data: info,
+              })
+            );
+          }
         } else {
-          // Local fallback
-          broadcastLocationUpdate(info);
+          // Local fallback — also throttle
+          const now = Date.now();
+          const lastTime = lastBroadcastTime.get(info.user_id) || 0;
+          if (now - lastTime >= 2000) {
+            lastBroadcastTime.set(info.user_id, now);
+            broadcastLocationUpdate(info);
+          }
         }
 
       } else if (data.type === "create_hotspot") {
@@ -385,6 +398,7 @@ wss.on("connection", async (ws: any) => {
               payload: {
                 type: "join_request_received",
                 roomId,
+                username,
                 request,
                 hotspot,
               },
@@ -413,7 +427,7 @@ wss.on("connection", async (ws: any) => {
           const hostSocket = findLocalSocketByUserId(hotspot.host_id);
           if (hostSocket) {
             hostSocket.send(
-              JSON.stringify({ type: "join_request_received", roomId, request, hotspot })
+              JSON.stringify({ type: "join_request_received", roomId, username, request, hotspot })
             );
           }
           ws.send(JSON.stringify({ type: "request_status", roomId, status: "pending" }));
@@ -653,6 +667,7 @@ wss.on("connection", async (ws: any) => {
     if (info) {
       console.log(`[noirme] Local client closed: ${info.username}`);
       clientsLocal.delete(ws);
+      lastBroadcastTime.delete(info.user_id);
 
       if (useRedis && redisPub) {
         try {
@@ -771,7 +786,7 @@ async function initRedis() {
   }
 }
 
-// Heartbeat check every 30 seconds to clean up dead connections
+// Heartbeat check every 20 seconds to clean up dead connections faster
 setInterval(() => {
   wss.clients.forEach((ws: any) => {
     if (ws.isAlive === false) {
@@ -782,7 +797,7 @@ setInterval(() => {
     ws.isAlive = false;
     ws.ping();
   });
-}, 30000);
+}, 20000);
 
 // Boot server
 initRedis().then(() => {
