@@ -516,6 +516,13 @@ export default function LiveMap() {
   const [intentText, setIntentText] = useState("");
   const [isInteracting, setIsInteracting] = useState(false);
   const [showBlockedModal, setShowBlockedModal] = useState(false);
+  const [customHotspotRange, setCustomHotspotRange] = useState(15);
+
+  useEffect(() => {
+    if (showIntentModal) {
+      setCustomHotspotRange(profile?.hotspotRange || 15);
+    }
+  }, [showIntentModal, profile?.hotspotRange]);
 
   // Drawer States
   const [selectedHotspot, _setSelectedHotspot] = useState<any | null>(null);
@@ -832,6 +839,8 @@ export default function LiveMap() {
         gender: profile?.gender || "",
         age: profile?.age || "",
         blockedUsers: [...(profile?.blockedUsers || []), ...localBlocks],
+        radarRange: profile?.radarRange || 15,
+        hotspotRange: profile?.hotspotRange || 15,
       })
     );
     // Request sync shortly after sending location so we discover peers who are already nearby
@@ -879,6 +888,7 @@ export default function LiveMap() {
         host_tags: profile?.selectedTags || [],
         host_gender: profile?.gender || "",
         host_age: profile?.age || undefined,
+        hotspotRange: customHotspotRange,
       })
     );
     setIntentText("");
@@ -1030,16 +1040,18 @@ export default function LiveMap() {
   const filteredUsers = activeUsers.filter((u) => {
     const blockedIds = [...(profile?.blockedUsers || []), ...localBlocks];
     const isBlocked = blockedIds.includes(u.user_id) || (u.blockedUsers || []).includes(myUserId);
-    const isWithinRange = getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= 10;
+    const isWithinRange = getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= (profile?.radarRange || 15);
     const isMatchesFilter = matchesUserFilter(u, selectedFilter);
     return !isBlocked && isWithinRange && isMatchesFilter;
   });
 
-  // Filter nearby active hotspots (within 10km)
+  // Filter nearby active hotspots (within dynamic radar range and host range)
   const filteredHotspots = intents.filter((h) => {
     const blockedIds = [...(profile?.blockedUsers || []), ...localBlocks];
     const isBlocked = blockedIds.includes(h.host_id);
-    const isWithinRange = getDistanceKm(location.lat, location.lng, h.lat, h.lng) <= 10;
+    const isWithinRange =
+      getDistanceKm(location.lat, location.lng, h.lat, h.lng) <= (profile?.radarRange || 15) &&
+      getDistanceKm(location.lat, location.lng, h.lat, h.lng) <= (h.hotspotRange || 15);
     const isNotExpired = h.expires_at > Date.now();
     const isMatchesFilter = matchesFilter(h, selectedFilter);
     return !isBlocked && isWithinRange && isNotExpired && isMatchesFilter;
@@ -1298,8 +1310,7 @@ export default function LiveMap() {
                 </div>
 
                 <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
-                  Post what you are doing. Nearby people within 10km will see your pulsing avatar and
-                  can request to join.
+                  Post what you are doing. Adjust the slider below to control how far away (10km - 30km) others can be to see your hotspot on their map.
                 </p>
 
                 <div className="flex flex-wrap gap-2 mb-4 max-h-[120px] overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
@@ -1326,6 +1337,23 @@ export default function LiveMap() {
                   placeholder="Or type your own..."
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-zinc-400 transition-colors mb-4"
                 />
+
+                {/* Hotspot Range Slider in Modal */}
+                <div className="mb-5 bg-zinc-50/50 border border-zinc-100 p-3 rounded-2xl">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-semibold text-zinc-700">Hotspot Proximity Range</span>
+                    <span className="text-xs font-bold text-zinc-900 bg-zinc-100 px-2 py-0.5 rounded-full">{customHotspotRange} km</span>
+                  </div>
+                  <input
+                    type="range" min="10" max="30" step="1"
+                    value={customHotspotRange}
+                    onChange={e => setCustomHotspotRange(parseInt(e.target.value))}
+                    className="w-full h-1.5 rounded-full cursor-pointer accent-zinc-900 bg-zinc-200"
+                  />
+                  <p className="text-[9px] text-zinc-400 mt-1">
+                    Your hotspot will only be discoverable by users physically within this radius.
+                  </p>
+                </div>
 
                 <div className="flex gap-3">
                   <button

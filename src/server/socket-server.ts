@@ -26,6 +26,8 @@ interface ClientInfo {
   gender?: string;
   age?: number;
   blockedUsers?: string[];
+  radarRange?: number;
+  hotspotRange?: number;
 }
 
 interface Message {
@@ -61,6 +63,7 @@ interface Hotspot {
   host_tags?: string[];
   host_gender?: string;
   host_age?: number;
+  hotspotRange?: number;
 }
 
 // ── In-Memory Fallback State (used if Redis is inactive/not configured) ──────
@@ -193,7 +196,7 @@ async function sendSync(ws: WebSocket) {
     allHotspots = Array.from(hotspotsLocal.values());
   }
 
-  // Filter active users: omit blocked relationships and those outside 10km radius
+  // Filter active users: omit blocked relationships and those outside customized radarRange (default 15km)
   const activeUsers = allUsers.filter((u) => {
     if (!u.lat || !u.lng) return false;
     if (u.user_id === clientInfo.user_id) return false;
@@ -203,10 +206,11 @@ async function sendSync(ws: WebSocket) {
     if (iBlockedU || uBlockedMe) return false;
 
     const distance = getDistanceKm(clientInfo.lat, clientInfo.lng, u.lat, u.lng);
-    return distance <= 10;
+    const maxRange = Math.max(10, Math.min(30, clientInfo.radarRange || 15));
+    return distance <= maxRange;
   });
 
-  // Filter hotspots: omit blocked hosts, expired hotspots, and those outside 10km radius
+  // Filter hotspots: omit blocked hosts, expired hotspots, and those outside customized range
   const activeHotspots = allHotspots.filter((h) => {
     if (h.expires_at <= Date.now()) return false;
 
@@ -216,7 +220,10 @@ async function sendSync(ws: WebSocket) {
     if (iBlockedHost || hostBlockedMe) return false;
 
     const distance = getDistanceKm(clientInfo.lat, clientInfo.lng, h.lat, h.lng);
-    return distance <= 10;
+    const viewerRange = Math.max(10, Math.min(30, clientInfo.radarRange || 15));
+    const hostRange = Math.max(10, Math.min(30, h.hotspotRange || 15));
+    // Visible if it's within viewer's scan range AND host's broadcast range
+    return distance <= viewerRange && distance <= hostRange;
   });
 
   ws.send(
@@ -245,7 +252,8 @@ function broadcastLocationUpdate(data: ClientInfo, senderWs?: WebSocket) {
 
         if (recipientInfo.lat && recipientInfo.lng && data.lat && data.lng) {
           const distance = getDistanceKm(recipientInfo.lat, recipientInfo.lng, data.lat, data.lng);
-          if (distance > 10) return;
+          const maxRange = Math.max(10, Math.min(30, recipientInfo.radarRange || 15));
+          if (distance > maxRange) return;
         }
       }
       client.send(
@@ -293,6 +301,8 @@ wss.on("connection", async (ws: any) => {
           gender: data.gender,
           age: data.age,
           blockedUsers: data.blockedUsers,
+          radarRange: typeof data.radarRange === "number" ? data.radarRange : undefined,
+          hotspotRange: typeof data.hotspotRange === "number" ? data.hotspotRange : undefined,
         };
 
         // Cache locally for connection management
@@ -353,6 +363,7 @@ wss.on("connection", async (ws: any) => {
           host_tags: data.host_tags,
           host_gender: data.host_gender,
           host_age: data.host_age,
+          hotspotRange: typeof data.hotspotRange === "number" ? data.hotspotRange : undefined,
         };
 
         if (useRedis && redisPub) {

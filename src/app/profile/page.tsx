@@ -56,7 +56,8 @@ export default function ProfilePage() {
   const [age, setAge] = useState<number | "">("");
   const [bio, setBio] = useState("");
   const [vibeEmoji, setVibeEmoji] = useState("☕");
-  const [radarRange, setRadarRange] = useState(2);
+  const [radarRange, setRadarRange] = useState(15);
+  const [hotspotRange, setHotspotRange] = useState(15);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [maskLocation, setMaskLocation] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -173,6 +174,7 @@ export default function ProfilePage() {
       setBio(profile.bio);
       setVibeEmoji(profile.vibeEmoji);
       setRadarRange(profile.radarRange);
+      setHotspotRange(profile.hotspotRange || 15);
       setSelectedTags(profile.selectedTags);
       setMaskLocation(profile.maskLocation);
       setAvatarUrl(profile.avatar_url || getAvatarUrl(profile.username));
@@ -188,7 +190,7 @@ export default function ProfilePage() {
     if (age === "" || isNaN(Number(age)) || Number(age) <= 0) { setError("Please enter a valid age."); return; }
     setIsSaving(true);
     try {
-      await saveProfile({ handle, bio, vibeEmoji, radarRange, selectedTags, maskLocation, avatar_url: avatarUrl, gender, age: Number(age) });
+      await saveProfile({ handle, bio, vibeEmoji, radarRange, hotspotRange, selectedTags, maskLocation, avatar_url: avatarUrl, gender, age: Number(age) });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (e) {
@@ -447,13 +449,30 @@ export default function ProfilePage() {
             <span className="text-xs font-bold text-zinc-900 bg-zinc-100 px-2 py-0.5 rounded-full">{radarRange} km</span>
           </div>
           <input
-            type="range" min="0.5" max="10" step="0.5"
+            type="range" min="10" max="30" step="1"
             value={radarRange}
-            onChange={e => setRadarRange(parseFloat(e.target.value))}
+            onChange={e => setRadarRange(parseInt(e.target.value))}
             className="w-full h-1.5 rounded-full cursor-pointer accent-zinc-900 bg-zinc-200"
           />
           <p className="text-[10px] text-zinc-400 mt-1.5">
-            Shows nearby activity within this radius.
+            How far out you scan for nearby users and activity (10km - 30km).
+          </p>
+        </div>
+
+        {/* Hotspot range */}
+        <div className="px-4 py-3 border-b border-zinc-50">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-semibold text-zinc-700">Hotspot Visibility Range</span>
+            <span className="text-xs font-bold text-zinc-900 bg-zinc-100 px-2 py-0.5 rounded-full">{hotspotRange} km</span>
+          </div>
+          <input
+            type="range" min="10" max="30" step="1"
+            value={hotspotRange}
+            onChange={e => setHotspotRange(parseInt(e.target.value))}
+            className="w-full h-1.5 rounded-full cursor-pointer accent-zinc-900 bg-zinc-200"
+          />
+          <p className="text-[10px] text-zinc-400 mt-1.5">
+            Maximum distance others can be to see your posted hotspots (10km - 30km).
           </p>
         </div>
 

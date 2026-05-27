@@ -16,6 +16,7 @@ export type UserProfile = {
   bio: string;
   vibeEmoji: string;
   radarRange: number;
+  hotspotRange?: number;
   selectedTags: string[];
   maskLocation: boolean;
   gender: "Male" | "Female" | "Non-binary" | "Prefer not to say" | "";
@@ -71,7 +72,7 @@ export function getAvatarUrl(seed: string): string {
   return `https://api.dicebear.com/9.x/${style}/svg?seed=${encodeURIComponent(seed)}`;
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any | null>(null);
@@ -82,14 +83,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const raw = await window.puter.kv.get(`profile_v2_${u.username}`);
       if (raw) {
         const parsed = JSON.parse(raw);
+        let rRange = parsed.radarRange;
+        if (typeof rRange !== "number" || rRange < 10) rRange = 15;
+        if (rRange > 30) rRange = 30;
+
+        let hRange = parsed.hotspotRange;
+        if (typeof hRange !== "number" || hRange < 10) hRange = 15;
+        if (hRange > 30) hRange = 30;
+
         setProfile({
           gender: "",
           age: "",
           blockedUsers: [],
           ...parsed,
+          radarRange: rRange,
+          hotspotRange: hRange,
         });
       } else {
-        // First-time defaults
+        // First-time defaults (15km default range)
         const defaultProfile: UserProfile = {
           id: u.id || u.username,
           username: u.username,
@@ -97,7 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           handle: u.username,
           bio: "",
           vibeEmoji: "☕",
-          radarRange: 2,
+          radarRange: 15,
+          hotspotRange: 15,
           selectedTags: [],
           maskLocation: true,
           gender: "",
