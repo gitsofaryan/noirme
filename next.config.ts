@@ -8,17 +8,8 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      // Don't bundle 'ws' — keep it as a native Node.js require
-      // This fixes the "Server is not a constructor" webpack bundling error
-      config.externals = [
-        ...(Array.isArray(config.externals) ? config.externals : []),
-        "ws",
-      ];
-    }
-    return config;
-  },
+  serverExternalPackages: ["ws"],
+  turbopack: {},
 };
 
 export default withPWA(nextConfig);
