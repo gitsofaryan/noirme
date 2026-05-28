@@ -112,7 +112,8 @@ function useOSM(mapBounds, zoom) {
                 return;
             // Silently ignore transient network errors in production
             // (Failed to fetch usually indicates temporary network issues)
-            if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+            if (typeof window !== "undefined" &&
+                window.location.hostname === "localhost") {
                 console.warn("[noirme] OSM fetch error:", err);
             }
         });

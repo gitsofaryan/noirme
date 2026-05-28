@@ -14,7 +14,13 @@ export interface OSMPlace {
   };
 }
 
-export function useOSM(mapBounds: { _southWest: { lat: number; lng: number }; _northEast: { lat: number; lng: number } } | null, zoom: number) {
+export function useOSM(
+  mapBounds: {
+    _southWest: { lat: number; lng: number };
+    _northEast: { lat: number; lng: number };
+  } | null,
+  zoom: number,
+) {
   const [places, setPlaces] = useState<OSMPlace[]>([]);
   const cache = useRef<Map<string, OSMPlace[]>>(new Map());
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -40,7 +46,9 @@ export function useOSM(mapBounds: { _southWest: { lat: number; lng: number }; _n
       }
       keysToRemove.forEach((key) => localStorage.removeItem(key));
       if (keysToRemove.length > 0) {
-        console.log(`[noirme-osm] Evicted ${keysToRemove.length} expired OSM cache entries.`);
+        console.log(
+          `[noirme-osm] Evicted ${keysToRemove.length} expired OSM cache entries.`,
+        );
       }
     } catch (e) {
       // Ignore local storage quota or privacy sandbox issues
@@ -115,11 +123,13 @@ export function useOSM(mapBounds: { _southWest: { lat: number; lng: number }; _n
       .then((data) => {
         if (data && data.elements) {
           // Filter to places that actually have a name, as nameless generic buildings aren't useful for hotspots
-          const namedPlaces = data.elements.filter((el: OSMPlace) => el.tags && el.tags.name) as OSMPlace[];
-          
+          const namedPlaces = data.elements.filter(
+            (el: OSMPlace) => el.tags && el.tags.name,
+          ) as OSMPlace[];
+
           // Cache in memory
           cache.current.set(cacheKey, namedPlaces);
-          
+
           // Cache in persistent localStorage
           if (typeof window !== "undefined") {
             try {
@@ -128,21 +138,24 @@ export function useOSM(mapBounds: { _southWest: { lat: number; lng: number }; _n
                 JSON.stringify({
                   places: namedPlaces,
                   timestamp: Date.now(),
-                })
+                }),
               );
             } catch (e) {}
           }
-          
+
           setPlaces(namedPlaces);
         }
       })
       .catch((err) => {
         // Silently ignore aborted requests
         if (err.name === "AbortError") return;
-        
+
         // Silently ignore transient network errors in production
         // (Failed to fetch usually indicates temporary network issues)
-        if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+        if (
+          typeof window !== "undefined" &&
+          window.location.hostname === "localhost"
+        ) {
           console.warn("[noirme] OSM fetch error:", err);
         }
       });

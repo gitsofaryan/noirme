@@ -155,8 +155,8 @@ export default function ChatPage() {
               <button
                 onClick={() => setActiveTab("chats")}
                 className={`flex-1 py-2 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer ${activeTab === "chats"
-                    ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/40"
-                    : "text-zinc-500 hover:text-zinc-900"
+                  ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/40"
+                  : "text-zinc-500 hover:text-zinc-900"
                   }`}
               >
                 Chats ({friends.length})
@@ -164,8 +164,8 @@ export default function ChatPage() {
               <button
                 onClick={() => setActiveTab("hotspots")}
                 className={`flex-1 py-2 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer ${activeTab === "hotspots"
-                    ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/40"
-                    : "text-zinc-500 hover:text-zinc-900"
+                  ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/40"
+                  : "text-zinc-500 hover:text-zinc-900"
                   }`}
               >
                 Hotspots ({filteredHotspots.length})
@@ -173,8 +173,8 @@ export default function ChatPage() {
               <button
                 onClick={() => setActiveTab("requests")}
                 className={`flex-1 py-2 text-[10px] font-extrabold rounded-lg transition-all relative cursor-pointer ${activeTab === "requests"
-                    ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/40"
-                    : "text-zinc-500 hover:text-zinc-900"
+                  ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/40"
+                  : "text-zinc-500 hover:text-zinc-900"
                   }`}
               >
                 Requests
@@ -219,8 +219,8 @@ export default function ChatPage() {
                           router.push(`/chat/${friend.username}`);
                         }}
                         className={`w-full p-3.5 rounded-2xl flex items-center gap-3.5 transition-all text-left border cursor-pointer ${isSelected
-                            ? "bg-zinc-50 border-zinc-200/80 shadow-sm"
-                            : "bg-transparent border-transparent hover:bg-zinc-50/60"
+                          ? "bg-zinc-50 border-zinc-200/80 shadow-sm"
+                          : "bg-transparent border-transparent hover:bg-zinc-50/60"
                           }`}
                       >
                         {/* Avatar container */}
@@ -533,8 +533,8 @@ export default function ChatPage() {
                         {/* Message Bubble */}
                         <div
                           className={`px-4 md:px-4.5 py-3 rounded-2xl text-sm font-medium leading-relaxed break-words transition-all ${isMe
-                              ? "bg-zinc-900 text-white rounded-br-none shadow-md hover:shadow-lg"
-                              : "bg-white border border-zinc-200/60 text-zinc-900 rounded-bl-none shadow-sm hover:shadow-md"
+                            ? "bg-zinc-900 text-white rounded-br-none shadow-md hover:shadow-lg"
+                            : "bg-white border border-zinc-200/60 text-zinc-900 rounded-bl-none shadow-sm hover:shadow-md"
                             }`}
                         >
                           {msg.text}

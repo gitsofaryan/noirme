@@ -13,7 +13,7 @@ export default function ChatByUsernamePage() {
     const router = useRouter();
     const params = useParams();
     const { friends, setActiveChatUser } = useMapContext();
-    
+
     // Safely extract username from params, defaulting to empty string
     const username = useMemo(() => {
         if (!params) return "";
