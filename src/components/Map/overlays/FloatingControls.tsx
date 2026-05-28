@@ -137,7 +137,7 @@ export function FloatingControls() {
       )}
 
       {/* Floating Action Controls (Bottom Right) */}
-      <div className="pointer-events-auto absolute bottom-20 right-5 flex flex-col items-center gap-4 z-[410]">
+      <div className="pointer-events-auto absolute bottom-28 right-5 flex flex-col items-center gap-4 z-[410]">
         {/* Recenter/Compass */}
         <button
           onClick={handleRecenterClick}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Compass, User, MessageSquare } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useMapContext } from "@/components/Map/MapProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsLoading } from "@/hooks/useLoading";
@@ -11,7 +11,7 @@ import { useIsLoading } from "@/hooks/useLoading";
 export default function BottomNav() {
   const pathname = usePathname();
   const isLoading = useIsLoading();
-  const { chatRequests, myUserId } = useMapContext();
+  const { chatRequests, myUserId, isInteracting } = useMapContext();
   const { isSignedIn, user } = useAuth();
 
   const pendingIncomingCount = chatRequests.filter(
@@ -29,55 +29,65 @@ export default function BottomNav() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[999] bg-white/95 backdrop-blur-xl border-t border-zinc-200 shadow-[0_-1px_20px_rgba(0,0,0,0.06)]">
-      <nav className="flex items-center justify-evenly w-full h-16 max-w-lg mx-auto px-6">
-        {navItems.map((item) => {
-          const isActive = pathname === item.path;
-          const Icon = item.icon;
-          const showBadge = item.name === "Chat" && pendingIncomingCount > 0;
+    <AnimatePresence>
+      {!isInteracting && (
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 30 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[999] w-[calc(100%-32px)] max-w-sm bg-white/90 backdrop-blur-lg rounded-full border border-zinc-200 shadow-[0_10px_30px_rgba(0,0,0,0.08)] transition-all"
+        >
+          <nav className="flex items-center justify-evenly w-full h-14 px-3">
+            {navItems.map((item) => {
+              const isActive = pathname === item.path;
+              const Icon = item.icon;
+              const showBadge = item.name === "Chat" && pendingIncomingCount > 0;
 
-          return (
-            <Link
-              key={item.name}
-              href={item.path}
-              id={`nav-${item.name.toLowerCase()}`}
-              className="relative flex flex-col items-center justify-center flex-1 h-full gap-1"
-            >
-              <div className="relative flex flex-col items-center gap-1">
-                {/* Active pill background */}
-                {isActive && (
-                  <motion.div
-                    layoutId="nav-pill"
-                    className="absolute -inset-2 rounded-2xl bg-zinc-100"
-                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                  />
-                )}
-                
-                <div className="relative">
-                  <Icon
-                    size={22}
-                    className={`relative z-10 transition-colors duration-200 ${isActive ? "text-zinc-900" : "text-zinc-400"
-                      }`}
-                    strokeWidth={isActive ? 2.5 : 1.8}
-                  />
-                  {showBadge && (
-                    <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[8px] font-extrabold text-white animate-pulse">
-                      {pendingIncomingCount}
-                    </span>
-                  )}
-                </div>
-
-                <span
-                  className={`relative z-10 text-[9px] font-bold tracking-widest uppercase transition-colors duration-200 ${isActive ? "text-zinc-900" : "text-zinc-400"
-                    }`}
+              return (
+                <Link
+                  key={item.name}
+                  href={item.path}
+                  id={`nav-${item.name.toLowerCase()}`}
+                  className="relative flex flex-col items-center justify-center flex-1 h-full cursor-pointer"
                 >
-                  {item.name}
-                </span>
-              </div>
-            </Link>
-          );
-        })}
-      </nav>
-    </div>
+                  <div className="relative flex flex-col items-center gap-0.5 py-1">
+                    {/* Active pill background */}
+                    {isActive && (
+                      <motion.div
+                        layoutId="nav-pill"
+                        className="absolute -inset-y-1 -inset-x-5 rounded-full bg-zinc-100"
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+
+                    <div className="relative">
+                      <Icon
+                        size={18}
+                        className={`relative z-10 transition-colors duration-200 ${isActive ? "text-zinc-900" : "text-zinc-400"
+                          }`}
+                        strokeWidth={isActive ? 2.5 : 1.8}
+                      />
+                      {showBadge && (
+                        <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-rose-500 text-[8px] font-extrabold text-white animate-pulse">
+                          {pendingIncomingCount}
+                        </span>
+                      )}
+                    </div>
+
+                    <span
+                      className={`relative z-10 text-[8px] font-extrabold tracking-widest uppercase transition-colors duration-200 ${isActive ? "text-zinc-900" : "text-zinc-400"
+                        }`}
+                    >
+                      {item.name}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </nav>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
