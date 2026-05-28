@@ -156,28 +156,7 @@ export function useGeolocation(maskLocation: boolean = true) {
         console.warn("IP Geolocation mount error:", err);
       });
 
-    if (!navigator.geolocation) {
-      setStatus("denied");
-      setAccuracySource("offline");
-      return;
-    }
 
-    // Fast OS-level cached location for near-instant map loading
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        if (!finished && !hasGPSRef.current) {
-          const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
-          const newLat = pos.coords.latitude + offset.latOffset;
-          const newLng = pos.coords.longitude + offset.lngOffset;
-          setLocation({ lat: newLat, lng: newLng });
-          setAccuracy(pos.coords.accuracy);
-          setAccuracySource(pos.coords.accuracy <= 200 ? "gps-high" : "gps-low");
-          setStatus("granted");
-        }
-      },
-      () => { }, // Ignore errors, watchPosition will handle it
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
-    );
 
     const startHighAccuracyWatch = () => {
       if (watchId !== null) return;
@@ -283,10 +262,53 @@ export function useGeolocation(maskLocation: boolean = true) {
       }, 120000);
     };
 
-    // Defer GPS watch slightly to avoid Lighthouse "permission request on page load" penalty
-    const gpsTimer = setTimeout(() => {
+    const startLocationTracking = () => {
+      if (!navigator.geolocation) {
+        setStatus("denied");
+        setAccuracySource("offline");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!finished && !hasGPSRef.current) {
+            const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
+            const newLat = pos.coords.latitude + offset.latOffset;
+            const newLng = pos.coords.longitude + offset.lngOffset;
+            setLocation({ lat: newLat, lng: newLng });
+            setAccuracy(pos.coords.accuracy);
+            setAccuracySource(pos.coords.accuracy <= 200 ? "gps-high" : "gps-low");
+            setStatus("granted");
+          }
+        },
+        () => { },
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
+      );
+
       startHighAccuracyWatch();
-    }, 1500);
+    };
+
+    if (typeof navigator !== "undefined" && navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: "geolocation" }).then((permStatus) => {
+        if (!finished) {
+          if (permStatus.state === "granted") {
+            startLocationTracking();
+          } else {
+            setStatus("waiting");
+          }
+
+          permStatus.onchange = () => {
+            if (permStatus.state === "granted" && !finished) {
+              startLocationTracking();
+            }
+          };
+        }
+      }).catch(() => {
+        startLocationTracking();
+      });
+    } else {
+      startLocationTracking();
+    }
 
     // Listen to user map interactions to wake up from stasis instantly
     const handleUserWakeup = () => {
@@ -306,7 +328,7 @@ export function useGeolocation(maskLocation: boolean = true) {
 
     return () => {
       finished = true;
-      clearTimeout(gpsTimer);
+
       window.removeEventListener("click", handleUserWakeup);
       window.removeEventListener("touchstart", handleUserWakeup);
       if (watchId !== null) {

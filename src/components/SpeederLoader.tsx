@@ -89,6 +89,7 @@ export default function SpeederLoader() {
           background: #000;
           position: absolute;
           animation: fazer1 0.2s linear infinite;
+          will-change: transform, opacity;
         }
 
         .loader > span > span:nth-child(2) {
@@ -109,20 +110,20 @@ export default function SpeederLoader() {
         }
 
         @keyframes fazer1 {
-          0% { left: 0; }
-          100% { left: -80px; opacity: 0; }
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-80px); opacity: 0; }
         }
         @keyframes fazer2 {
-          0% { left: 0; }
-          100% { left: -100px; opacity: 0; }
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-100px); opacity: 0; }
         }
         @keyframes fazer3 {
-          0% { left: 0; }
-          100% { left: -50px; opacity: 0; }
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50px); opacity: 0; }
         }
         @keyframes fazer4 {
-          0% { left: 0; }
-          100% { left: -150px; opacity: 0; }
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-150px); opacity: 0; }
         }
 
         @keyframes speeder {
@@ -153,6 +154,8 @@ export default function SpeederLoader() {
           width: 20%;
           background: #000;
           opacity: 0.08;
+          left: 0;
+          will-change: transform, opacity;
         }
 
         .longfazers span:nth-child(1) {
@@ -178,10 +181,10 @@ export default function SpeederLoader() {
           animation-delay: -3s;
         }
 
-        @keyframes lf { 0% { left: 200%; } 100% { left: -200%; opacity: 0; } }
-        @keyframes lf2 { 0% { left: 200%; } 100% { left: -200%; opacity: 0; } }
-        @keyframes lf3 { 0% { left: 200%; } 100% { left: -100%; opacity: 0; } }
-        @keyframes lf4 { 0% { left: 200%; } 100% { left: -100%; opacity: 0; } }
+        @keyframes lf { 0% { transform: translateX(500%); } 100% { transform: translateX(-150%); opacity: 0; } }
+        @keyframes lf2 { 0% { transform: translateX(500%); } 100% { transform: translateX(-150%); opacity: 0; } }
+        @keyframes lf3 { 0% { transform: translateX(500%); } 100% { transform: translateX(-100%); opacity: 0; } }
+        @keyframes lf4 { 0% { transform: translateX(500%); } 100% { transform: translateX(-100%); opacity: 0; } }
       `}</style>
 
       {/* Long Fazers Background */}
