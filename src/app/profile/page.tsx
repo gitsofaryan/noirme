@@ -734,7 +734,7 @@ export default function ProfilePage() {
                             }`}
                         >
                           <div className="w-10 h-10 rounded-lg bg-white border border-zinc-200/50 overflow-hidden flex items-center justify-center">
-                            <img src={stylePreviewUrl} alt={style.name} className="w-8 h-8 object-contain" />
+                            <img src={stylePreviewUrl} alt={style.name} className="w-8 h-8 object-contain" loading="lazy" />
                           </div>
                           <p className="text-[8px] font-bold truncate w-full text-center leading-tight">{style.name}</p>
                         </button>

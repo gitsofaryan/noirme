@@ -3,7 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import BottomNav from "@/components/BottomNav";
 import { AuthProvider } from "@/hooks/useAuth";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LoadingProvider } from "@/hooks/useLoading";
+import { MapProvider } from "@/components/Map/MapProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -64,12 +66,16 @@ export default function RootLayout({
           `}
         </Script>
         <AuthProvider>
-          <LoadingProvider>
-            <main className="absolute inset-0 pb-16 overflow-hidden">
-              {children}
-            </main>
-            <BottomNav />
-          </LoadingProvider>
+          <ErrorBoundary>
+            <LoadingProvider>
+              <MapProvider>
+                <main className="absolute inset-0 pb-16 overflow-hidden">
+                  {children}
+                </main>
+                <BottomNav />
+              </MapProvider>
+            </LoadingProvider>
+          </ErrorBoundary>
         </AuthProvider>
       </body>
     </html>
