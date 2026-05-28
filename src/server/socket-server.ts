@@ -805,26 +805,27 @@ wss.on("connection", async (ws: any) => {
       }
 
       if (data.type === "location_update") {
+        const existing = clientsLocal.get(ws);
         const info: ClientInfo = {
           user_id: data.user_id,
           username: data.username,
-          avatar_url: data.avatar_url || "",
-          vibeEmoji: data.vibeEmoji || "☕",
+          avatar_url: data.avatar_url || existing?.avatar_url || "",
+          vibeEmoji: data.vibeEmoji || existing?.vibeEmoji || "☕",
           lat: data.lat,
           lng: data.lng,
           last_seen: Date.now(),
-          bio: sanitizeInput(data.bio),
-          selectedTags: data.selectedTags || [],
-          gender: data.gender || "",
-          age: typeof data.age === "number" ? data.age : undefined,
-          blockedUsers: data.blockedUsers || [],
+          bio: data.bio !== undefined ? sanitizeInput(data.bio) : (existing?.bio || ""),
+          selectedTags: data.selectedTags !== undefined ? (data.selectedTags || []) : (existing?.selectedTags || []),
+          gender: data.gender !== undefined ? (data.gender || "") : (existing?.gender || ""),
+          age: typeof data.age === "number" ? data.age : existing?.age,
+          blockedUsers: data.blockedUsers !== undefined ? (data.blockedUsers || []) : (existing?.blockedUsers || []),
           radarRange:
-            typeof data.radarRange === "number" ? data.radarRange : undefined,
+            typeof data.radarRange === "number" ? data.radarRange : (existing?.radarRange || 15),
           hotspotRange:
             typeof data.hotspotRange === "number"
               ? data.hotspotRange
-              : undefined,
-          is_broadcasting_audio: data.is_broadcasting_audio || false,
+              : (existing?.hotspotRange || 15),
+          is_broadcasting_audio: data.is_broadcasting_audio !== undefined ? !!data.is_broadcasting_audio : (existing?.is_broadcasting_audio || false),
         };
 
         clientsLocal.set(ws, info);
