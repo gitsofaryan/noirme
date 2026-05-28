@@ -2,6 +2,7 @@
 
 import { useMapContext } from "../MapProvider";
 import { getAvatarUrl } from "@/hooks/useAuth";
+import { getDistanceKm } from "@/hooks/useGeolocation";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin, Users, MessageSquare, Trash2, Lock, Loader2, LogOut } from "lucide-react";
 import { ChatRoom } from "./ChatRoom";
@@ -20,27 +21,13 @@ export function HotspotDrawer() {
     setRoutingTarget,
   } = useMapContext();
 
-  function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
 
-  if (!selectedHotspot) return null;
 
-  const isHost = selectedHotspot.host_id === myUserId;
-  const myRequest = selectedHotspot.requests?.find((r: any) => r.user_id === myUserId);
+  const isHost = selectedHotspot?.host_id === myUserId;
+  const myRequest = selectedHotspot?.requests?.find((r: any) => r.user_id === myUserId);
   const guestStatus = myRequest ? myRequest.status : "none"; // 'pending' | 'accepted' | 'declined' | 'none'
 
-  const distance = location
+  const distance = location && selectedHotspot
     ? getDistanceKm(location.lat, location.lng, selectedHotspot.lat, selectedHotspot.lng)
     : null;
   const distanceStr =
@@ -49,13 +36,22 @@ export function HotspotDrawer() {
   return (
     <AnimatePresence>
       {selectedHotspot && (
-        <motion.div
-          initial={{ y: "100%", opacity: 0.95 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: "100%", opacity: 0.95 }}
-          transition={{ type: "spring", stiffness: 350, damping: 35 }}
-          className="fixed bottom-16 left-4 right-4 z-[900] max-w-lg mx-auto bg-white rounded-3xl border border-zinc-200 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] overflow-hidden"
-        >
+        <>
+          {/* Semi-transparent backdrop overlay */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedHotspot(null)}
+            className="fixed inset-0 bg-black/10 z-[890] backdrop-blur-[1px]"
+          />
+          <motion.div
+            initial={{ y: "100%", opacity: 0.95 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: "100%", opacity: 0.95 }}
+            transition={{ type: "spring", stiffness: 350, damping: 35 }}
+            className="fixed bottom-16 left-4 right-4 z-[900] max-w-lg mx-auto bg-white rounded-3xl border border-zinc-200 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] overflow-hidden"
+          >
           {/* Drag Handle */}
           <div className="flex justify-center pt-3 pb-1 bg-white">
             <div className="w-10 h-1 rounded-full bg-zinc-200" />
@@ -368,6 +364,7 @@ export function HotspotDrawer() {
             )}
           </div>
         </motion.div>
+      </>
       )}
     </AnimatePresence>
   );

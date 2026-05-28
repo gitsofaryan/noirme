@@ -2,10 +2,13 @@
 
 import { useMapContext } from "../MapProvider";
 import { getAvatarUrl } from "@/hooks/useAuth";
+import { getDistanceKm } from "@/hooks/useGeolocation";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin, Navigation } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function UserDrawer() {
+  const router = useRouter();
   const {
     location,
     selectedUser,
@@ -16,32 +19,47 @@ export function UserDrawer() {
     handleWave,
     handleBlock,
     setRoutingTarget,
+    chatRequests,
+    myUserId,
+    sendChatRequest,
+    setActiveChatUser,
   } = useMapContext();
 
-  function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
+  const requestSent = selectedUser
+    ? chatRequests.find((r: any) => r.sender_id === myUserId && r.target_id === selectedUser.user_id)
+    : null;
+  const requestReceived = selectedUser
+    ? chatRequests.find((r: any) => r.sender_id === selectedUser.user_id && r.target_id === myUserId)
+    : null;
+
+  const isPendingSent = !!(requestSent && requestSent.status === "pending");
+  const isPendingReceived = !!(requestReceived && requestReceived.status === "pending");
+  const isConnected = !!(
+    (requestSent && requestSent.status === "accepted") ||
+    (requestReceived && requestReceived.status === "accepted")
+  );
+
+
 
   return (
     <AnimatePresence>
       {selectedUser && (
-        <motion.div
-          initial={{ y: "100%", opacity: 0.95 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: "100%", opacity: 0.95 }}
-          transition={{ type: "spring", stiffness: 350, damping: 35 }}
-          className="fixed bottom-16 left-4 right-4 z-[900] max-w-lg mx-auto bg-white rounded-3xl border border-zinc-200 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] overflow-hidden"
-        >
+        <>
+          {/* Semi-transparent backdrop overlay */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedUser(null)}
+            className="fixed inset-0 bg-black/10 z-[890] backdrop-blur-[1px]"
+          />
+          <motion.div
+            initial={{ y: "100%", opacity: 0.95 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: "100%", opacity: 0.95 }}
+            transition={{ type: "spring", stiffness: 350, damping: 35 }}
+            className="fixed bottom-16 left-4 right-4 z-[900] max-w-lg mx-auto bg-white rounded-3xl border border-zinc-200 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] overflow-hidden"
+          >
           {/* Drag Handle */}
           <div className="flex justify-center pt-3 pb-1 bg-white">
             <div className="w-10 h-1 rounded-full bg-zinc-200" />
@@ -131,6 +149,62 @@ export function UserDrawer() {
                 <Navigation size={13} /> Get Directions
               </button>
 
+              {/* Connect / Chat Button */}
+              {(() => {
+                if (isConnected) {
+                  return (
+                    <button
+                      onClick={() => {
+                        const friendDetails = {
+                          user_id: selectedUser.user_id,
+                          username: selectedUser.username,
+                          avatar_url: selectedUser.avatar_url,
+                          vibeEmoji: selectedUser.vibeEmoji,
+                        };
+                        setActiveChatUser(friendDetails);
+                        setSelectedUser(null);
+                        router.push("/chat");
+                      }}
+                      className="w-full py-3.5 rounded-2xl bg-purple-650 hover:bg-purple-700 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer shadow-sm"
+                    >
+                      Open Chat 💬
+                    </button>
+                  );
+                } else if (isPendingSent) {
+                  return (
+                    <button
+                      disabled
+                      className="w-full py-3.5 rounded-2xl bg-zinc-100 text-zinc-400 text-xs font-bold flex items-center justify-center gap-1.5 cursor-not-allowed border border-zinc-200/50"
+                    >
+                      Request Pending... ✉️
+                    </button>
+                  );
+                } else if (isPendingReceived) {
+                  return (
+                    <button
+                      onClick={() => {
+                        setSelectedUser(null);
+                        router.push("/chat");
+                      }}
+                      className="w-full py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer shadow-sm"
+                    >
+                      Respond to Request 💬
+                    </button>
+                  );
+                } else {
+                  return (
+                    <button
+                      onClick={() => {
+                        sendChatRequest(selectedUser.user_id);
+                      }}
+                      className="w-full py-3.5 rounded-2xl bg-zinc-900 hover:bg-black text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer"
+                    >
+                      Request to Connect 💬
+                    </button>
+                  );
+                }
+              })()}
+
               <div className="flex gap-3">
                 <button
                   onClick={() => {
@@ -164,6 +238,7 @@ export function UserDrawer() {
             </div>
           </div>
         </motion.div>
+      </>
       )}
     </AnimatePresence>
   );
