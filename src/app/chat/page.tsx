@@ -52,6 +52,7 @@ export default function ChatPage() {
   const [typedMessage, setTypedMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
 
   // Auto scroll messages
   useEffect(() => {
@@ -61,12 +62,17 @@ export default function ChatPage() {
   // Handle typing state broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTypedMessage(e.target.value);
-    sendTypingState(true);
+    
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      sendTypingState(true);
+    }
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
+      isTypingRef.current = false;
       sendTypingState(false);
-    }, 2000);
+    }, 3000);
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -75,6 +81,7 @@ export default function ChatPage() {
 
     sendDirectMessage(typedMessage.trim());
     setTypedMessage("");
+    isTypingRef.current = false;
     sendTypingState(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
   };

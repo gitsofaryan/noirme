@@ -11,7 +11,7 @@ import { useIsLoading } from "@/hooks/useLoading";
 export default function BottomNav() {
   const pathname = usePathname();
   const isLoading = useIsLoading();
-  const { chatRequests, myUserId, isInteracting } = useMapContext();
+  const { chatRequests, myUserId, isInteracting, activeChatUser, selectedUser, selectedHotspot } = useMapContext();
   const { isSignedIn, user } = useAuth();
 
   const pendingIncomingCount = chatRequests.filter(
@@ -28,9 +28,15 @@ export default function BottomNav() {
     return null;
   }
 
+  const shouldHide =
+    isInteracting ||
+    (pathname?.startsWith("/chat") && activeChatUser !== null) ||
+    selectedUser !== null ||
+    selectedHotspot !== null;
+
   return (
     <AnimatePresence>
-      {!isInteracting && (
+      {!shouldHide && (
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}

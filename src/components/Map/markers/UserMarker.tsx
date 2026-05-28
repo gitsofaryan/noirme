@@ -309,10 +309,13 @@ interface UserMarkerProps {
 }
 
 export function UserMarker({ item }: UserMarkerProps) {
-  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser, isBroadcastingAudio } = useMapContext();
+  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser, isBroadcastingAudio, friends } = useMapContext();
 
   const isWaving = item.type === "user" && activeWaves.some((w) => w.sender_id === item.raw?.user_id);
-  const isBroadcasting = item.type === "me" ? isBroadcastingAudio : !!item.raw?.is_broadcasting_audio;
+  const isFriend = item.type === "user" && friends.some((f) => f.user_id === item.raw?.user_id);
+  const isBroadcasting = item.type === "me" 
+    ? isBroadcastingAudio 
+    : (isFriend ? !!item.raw?.is_broadcasting_audio : false);
 
   return (
     <MemoizedUserMarker

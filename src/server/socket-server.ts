@@ -209,6 +209,7 @@ const DirectMessageTypingSchema = z.object({
 
 const RequestChatsSchema = z.object({
   type: z.literal("request_chats"),
+  user_id: z.string().optional(),
 });
 
 const RequestDMHistorySchema = z.object({
@@ -239,7 +240,7 @@ const RTCICECandidateSchema = z.object({
 });
 
 const IncomingMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("request_sync") }),
+  z.object({ type: z.literal("request_sync"), user_id: z.string().optional() }),
   LocationUpdateSchema,
   CreateHotspotSchema,
   RequestJoinSchema,
@@ -772,7 +773,10 @@ wss.on("connection", async (ws: any) => {
       // Identity verification: Ensure client registers location first and verify matching user_id/sender_id
       const boundClient = clientsLocal.get(ws);
       if (boundClient) {
-        const incomingUserId = (data as any).user_id || (data as any).sender_id;
+        const incomingUserId = data.type === "respond_chat_request"
+          ? null
+          : ((data as any).user_id || (data as any).sender_id);
+          
         if (incomingUserId && incomingUserId !== boundClient.user_id) {
           logEvent("identity_mismatch_rejected", {
             bound_id: boundClient.user_id,
@@ -787,7 +791,7 @@ wss.on("connection", async (ws: any) => {
           );
           return;
         }
-      } else if (data.type !== "location_update") {
+      } else if (data.type !== "location_update" && data.type !== "request_chats" && data.type !== "request_sync") {
         logEvent("unregistered_client_action_rejected", { type: data.type });
         ws.send(
           JSON.stringify({
@@ -799,6 +803,18 @@ wss.on("connection", async (ws: any) => {
       }
 
       if (data.type === "request_sync") {
+        const userId = (data as any).user_id;
+        if (userId && !clientsLocal.has(ws)) {
+          clientsLocal.set(ws, {
+            user_id: userId,
+            username: "",
+            avatar_url: "",
+            vibeEmoji: "☕",
+            lat: 0,
+            lng: 0,
+            last_seen: Date.now(),
+          });
+        }
         await sendSync(ws);
         return;
       }
@@ -1488,6 +1504,16 @@ wss.on("connection", async (ws: any) => {
               },
             })
           );
+          await redisPub.publish(
+            "noirme:direct_notifications",
+            JSON.stringify({
+              target_user_id: responderInfo.user_id,
+              payload: {
+                type: "chat_request_responded",
+                request,
+              },
+            })
+          );
         } else {
           chatRequestsLocal.set(reqKey, request);
           const senderSocket = findLocalSocketByUserId(sender_id);
@@ -1499,10 +1525,21 @@ wss.on("connection", async (ws: any) => {
               })
             );
           }
+          ws.send(
+            JSON.stringify({
+              type: "chat_request_responded",
+              request,
+            })
+          );
         }
 
         await sendChatsSync(ws, responderInfo.user_id);
+        const senderSocket = findLocalSocketByUserId(sender_id);
+        if (senderSocket) {
+          await sendChatsSync(senderSocket, sender_id);
+        }
         await triggerChatsSync(sender_id);
+        await triggerChatsSync(responderInfo.user_id);
 
       } else if (data.type === "send_direct_message") {
         const { recipient_id, text } = data;
@@ -1625,9 +1662,20 @@ wss.on("connection", async (ws: any) => {
         }
 
       } else if (data.type === "request_chats") {
-        const user = clientsLocal.get(ws);
-        if (user) {
-          await sendChatsSync(ws, user.user_id);
+        const userId = data.user_id || clientsLocal.get(ws)?.user_id;
+        if (userId) {
+          if (!clientsLocal.has(ws)) {
+            clientsLocal.set(ws, {
+              user_id: userId,
+              username: "",
+              avatar_url: "",
+              vibeEmoji: "☕",
+              lat: 0,
+              lng: 0,
+              last_seen: Date.now(),
+            });
+          }
+          await sendChatsSync(ws, userId);
         }
 
       } else if (data.type === "request_dm_history") {

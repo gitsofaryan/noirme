@@ -145,24 +145,10 @@ function LiveMapContent() {
   const [bounds, setBounds] = useState<any>(null);
   const osmPlaces = useOSM(bounds, zoom);
 
-  if (!location) {
-    return (
-      <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-50 z-[9999]">
-        <motion.div
-          animate={{ scale: [1, 1.1, 1] }}
-          transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-          className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center border-4 border-zinc-100 mb-6"
-        >
-          <Compass className="w-8 h-8 text-black animate-[spin_3s_linear_infinite]" />
-        </motion.div>
-        <h2 className="text-xl font-bold text-zinc-900 tracking-tight">Locating you...</h2>
-        <p className="text-sm font-semibold text-zinc-500 mt-2">Finding nearby users</p>
-      </div>
-    );
-  }
-
   // Calculate dispersion of markers to prevent overlapping
   const dispersedMarkers = useMemo(() => {
+    if (!location) return [];
+
     const list: Array<{
       key: string;
       type: "me" | "user" | "hotspot";
@@ -257,7 +243,27 @@ function LiveMapContent() {
     }
 
     return list;
-  }, [filteredUsers, filteredHotspots, location.lat, location.lng, zoom, bounds]);
+  }, [filteredUsers, filteredHotspots, location?.lat, location?.lng, zoom, bounds]);
+
+  if (!location) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-50 z-[9999] p-6 text-center select-none">
+        <motion.div
+          animate={{ scale: [1, 1.1, 1] }}
+          transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+          className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center border-4 border-zinc-100 mb-6"
+        >
+          <Compass className="w-8 h-8 text-black animate-[spin_3s_linear_infinite]" />
+        </motion.div>
+        <h2 className="text-lg font-black text-zinc-900 tracking-tight text-center px-6">
+          Calibrating Radar & GPS...
+        </h2>
+        <p className="text-xs font-semibold text-zinc-500 mt-3 text-center max-w-xs px-6 leading-relaxed">
+          Please keep your device location / GPS turned on, and click "Allow" if the browser requests location access.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="absolute inset-0 pb-16">

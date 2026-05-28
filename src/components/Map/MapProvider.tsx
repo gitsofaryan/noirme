@@ -255,6 +255,10 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
 
   // Chat states
   const [chatRequests, setChatRequests] = useState<any[]>([]);
+  const chatRequestsRef = useRef<any[]>([]);
+  useEffect(() => {
+    chatRequestsRef.current = chatRequests;
+  }, [chatRequests]);
   const [activeChatUser, _setActiveChatUser] = useState<any | null>(null);
   const activeChatUserRef = useRef<any | null>(null);
   const setActiveChatUser = (val: any) => {
@@ -442,18 +446,25 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
               ].slice(0, 5)
             );
           } else if (!existingUser.is_broadcasting_audio && msg.data.is_broadcasting_audio) {
-            addToast(`🎙️ @${msg.data.username} is speaking nearby!`, "default");
-            setNotifications((prevNotifs) =>
-              [
-                {
-                  id: Math.random().toString(36).substring(7),
-                  text: `🎙️ @${msg.data.username} started an audio broadcast`,
-                  time: Date.now(),
-                  read: false,
-                },
-                ...prevNotifs,
-              ].slice(0, 5)
+            const isFriend = chatRequestsRef.current.some(
+              (r) =>
+                r.status === "accepted" &&
+                (r.sender_id === msg.data.user_id || r.target_id === msg.data.user_id)
             );
+            if (isFriend) {
+              addToast(`🎙️ @${msg.data.username} is speaking nearby!`, "default");
+              setNotifications((prevNotifs) =>
+                [
+                  {
+                    id: Math.random().toString(36).substring(7),
+                    text: `🎙️ @${msg.data.username} started an audio broadcast`,
+                    time: Date.now(),
+                    read: false,
+                  },
+                  ...prevNotifs,
+                ].slice(0, 5)
+              );
+            }
           }
           return [...filtered, msg.data];
         });

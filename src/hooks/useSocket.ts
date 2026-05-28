@@ -169,8 +169,8 @@ export function useSocket({
 
         const activeWs = ws;
         if (activeWs) {
-          activeWs.send(JSON.stringify({ type: "request_sync" }));
-          activeWs.send(JSON.stringify({ type: "request_chats" }));
+          activeWs.send(JSON.stringify({ type: "request_sync", user_id: userId }));
+          activeWs.send(JSON.stringify({ type: "request_chats", user_id: userId }));
 
           // Flush offline messages
           if (offlineMessagesRef.current.length > 0) {
