@@ -1,7 +1,8 @@
 "use client";
 
 import { useMapContext } from "@/components/Map/MapProvider";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, getAvatarUrl } from "@/hooks/useAuth";
+import { getDistanceKm } from "@/hooks/useGeolocation";
 import { useRouter } from "next/navigation";
 import {
   MessageSquare,
@@ -39,10 +40,15 @@ export default function ChatPage() {
     setFollowUser,
     addToast,
     isLoadingHistory,
-    activeUsers
+    activeUsers,
+    filteredHotspots,
+    location,
+    selectedHotspot,
+    setSelectedHotspot,
+    requestJoin
   } = useMapContext();
 
-  const [activeTab, setActiveTab] = useState<"chats" | "requests">("chats");
+  const [activeTab, setActiveTab] = useState<"chats" | "hotspots" | "requests">("chats");
   const [typedMessage, setTypedMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -142,7 +148,7 @@ export default function ChatPage() {
             <div className="flex bg-zinc-100/80 p-1 rounded-xl border border-zinc-200/50">
               <button
                 onClick={() => setActiveTab("chats")}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                className={`flex-1 py-2 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer ${
                   activeTab === "chats"
                     ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/40"
                     : "text-zinc-500 hover:text-zinc-900"
@@ -151,8 +157,18 @@ export default function ChatPage() {
                 Chats ({friends.length})
               </button>
               <button
+                onClick={() => setActiveTab("hotspots")}
+                className={`flex-1 py-2 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer ${
+                  activeTab === "hotspots"
+                    ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/40"
+                    : "text-zinc-500 hover:text-zinc-900"
+                }`}
+              >
+                Hotspots ({filteredHotspots.length})
+              </button>
+              <button
                 onClick={() => setActiveTab("requests")}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all relative cursor-pointer ${
+                className={`flex-1 py-2 text-[10px] font-extrabold rounded-lg transition-all relative cursor-pointer ${
                   activeTab === "requests"
                     ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/40"
                     : "text-zinc-500 hover:text-zinc-900"
@@ -160,7 +176,7 @@ export default function ChatPage() {
               >
                 Requests
                 {incomingRequests.length > 0 && (
-                  <span className="absolute top-1.5 right-3 w-4 h-4 bg-rose-500 rounded-full text-[9px] flex items-center justify-center font-extrabold text-white">
+                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-rose-500 rounded-full text-[9px] flex items-center justify-center font-extrabold text-white">
                     {incomingRequests.length}
                   </span>
                 )}
@@ -234,6 +250,108 @@ export default function ChatPage() {
                       </motion.button>
                     );
                   })
+                )
+              ) : activeTab === "hotspots" ? (
+                filteredHotspots.length === 0 ? (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="h-64 flex flex-col items-center justify-center text-center p-6 text-zinc-400 select-none"
+                  >
+                    <Navigation className="w-8 h-8 mb-3 opacity-40 text-zinc-300 animate-pulse" />
+                    <p className="text-sm font-bold text-zinc-700">No hotspots nearby</p>
+                    <p className="text-xs opacity-85 mt-1 max-w-[200px] leading-normal">
+                      Be the first to post a gathering intent on the map!
+                    </p>
+                  </motion.div>
+                ) : (
+                  <div className="space-y-3 pt-2">
+                    {filteredHotspots.map((hotspot) => {
+                      const isHost = hotspot.host_id === myUserId;
+                      const hasPending = hotspot.requests?.some(
+                        (r: any) => r.user_id === myUserId && r.status === "pending"
+                      );
+                      const isMember = hotspot.requests?.some(
+                        (r: any) => r.user_id === myUserId && r.status === "accepted"
+                      );
+                      
+                      const distance = location
+                        ? getDistanceKm(location.lat, location.lng, hotspot.lat, hotspot.lng)
+                        : null;
+
+                      return (
+                        <motion.div
+                          key={hotspot.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          className="p-4 bg-zinc-50 border border-zinc-150 rounded-2xl flex flex-col gap-3 shadow-sm hover:border-zinc-200 transition-all"
+                        >
+                          <div className="flex items-center gap-3">
+                            {/* Host Avatar */}
+                            <div className="relative">
+                              <div className="w-10 h-10 rounded-xl bg-zinc-150 overflow-hidden border border-zinc-200 flex-shrink-0">
+                                <img
+                                  src={hotspot.host_avatar || getAvatarUrl(hotspot.host_username)}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-white rounded-full border border-zinc-200 shadow-sm flex items-center justify-center">
+                                <span className="text-[9px] font-extrabold">{hotspot.vibeEmoji || "🔥"}</span>
+                              </div>
+                            </div>
+
+                            {/* Hostname & Distance */}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-xs font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">
+                                {isHost ? "Your Hotspot" : `@${hotspot.host_username}`}
+                              </h4>
+                              <h3 className="font-extrabold text-sm text-zinc-900 truncate leading-snug">
+                                {hotspot.title}
+                              </h3>
+                              <p className="text-[10px] font-semibold text-zinc-400 flex items-center gap-1 mt-0.5 leading-none">
+                                📍 {distance !== null ? `${distance.toFixed(2)} km` : "Nearby"} · {hotspot.requests?.filter((r: any) => r.status === "accepted").length || 0} joined
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Action Bar */}
+                          <div className="flex gap-2">
+                            {isHost || isMember ? (
+                              <button
+                                onClick={() => {
+                                  setSelectedHotspot(hotspot);
+                                  router.push("/");
+                                }}
+                                className="flex-1 py-2 px-3 bg-zinc-900 hover:bg-black text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow-sm text-center cursor-pointer font-extrabold"
+                              >
+                                View on Map
+                              </button>
+                            ) : hasPending ? (
+                              <button
+                                disabled
+                                className="flex-1 py-2 px-3 bg-zinc-200 text-zinc-400 text-[10px] font-black uppercase tracking-wider rounded-xl cursor-not-allowed text-center border border-zinc-300/30 font-extrabold"
+                              >
+                                Pending Request
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setSelectedHotspot(hotspot);
+                                  requestJoin(hotspot.id);
+                                  addToast(`Requested to join @${hotspot.host_username}'s gathering!`);
+                                }}
+                                className="flex-1 py-2 px-3 bg-zinc-900 hover:bg-black text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow-sm text-center cursor-pointer font-extrabold"
+                              >
+                                Request to Join
+                              </button>
+                            )}
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
                 )
               ) : (
                 /* Requests tab content */

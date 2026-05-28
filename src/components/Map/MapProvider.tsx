@@ -85,7 +85,7 @@ interface MapContextType {
   handleWave: () => void;
   handleBlock: (userId: string) => Promise<void>;
   postIntent: (osmPlace?: any) => void;
-  requestJoin: () => void;
+  requestJoin: (roomId?: any) => void;
   respondRequest: (guestId: string, status: "accepted" | "declined") => void;
   sendMessage: (text: string) => void;
   leaveHotspot: () => void;
@@ -652,9 +652,10 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     setShowIntentModal(false);
   };
 
-  const requestJoin = () => {
-    if (!selectedHotspot) return;
-    socket.requestJoin(selectedHotspot.id);
+  const requestJoin = (roomId?: any) => {
+    const id = typeof roomId === "string" ? roomId : selectedHotspot?.id;
+    if (!id) return;
+    socket.requestJoin(id);
   };
 
   const respondRequest = (guestId: string, status: "accepted" | "declined") => {
