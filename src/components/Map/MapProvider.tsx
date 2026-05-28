@@ -163,13 +163,39 @@ const DMContext = createContext<DMContextType | undefined>(undefined);
 export function MapProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, user, profile, blockUser } = useAuth();
 
+  const [anonDetails, setAnonDetails] = useState<{ id: string; handle: string } | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      let anonId = localStorage.getItem("noirme_anon_id");
+      let anonHandle = localStorage.getItem("noirme_anon_handle");
+
+      if (!anonId) {
+        anonId = `anon_${Math.random().toString(36).substring(2, 10)}`;
+        localStorage.setItem("noirme_anon_id", anonId);
+      }
+
+      if (!anonHandle) {
+        const adjs = ["Swift", "Silent", "Neon", "Stellar", "Lunar", "Cosmic", "Urban", "Phantom", "Retro", "Vapor", "Vibrant", "Crypto"];
+        const nouns = ["Ghost", "Nomad", "Rider", "Shadow", "Seeker", "Drifter", "Pulse", "Volt", "Zenith", "Spark", "Wave", "Echo"];
+        const adj = adjs[Math.floor(Math.random() * adjs.length)];
+        const noun = nouns[Math.floor(Math.random() * nouns.length)];
+        const num = Math.floor(100 + Math.random() * 900); // 100-999
+        anonHandle = `${adj}${noun}_${num}`;
+        localStorage.setItem("noirme_anon_handle", anonHandle);
+      }
+
+      setAnonDetails({ id: anonId, handle: anonHandle });
+    }
+  }, []);
+
   const myUserId =
     user?.id ||
     user?.username ||
-    (typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : null) ||
+    anonDetails?.id ||
     "anon";
 
-  const handle = profile?.handle || user?.username || "";
+  const handle = profile?.handle || user?.username || anonDetails?.handle || "";
   const vibeEmoji = profile?.vibeEmoji || "☕";
   const myAvatarUrl =
     profile?.avatar_url || (user ? getAvatarUrl(user.username) : getAvatarUrl("anon"));
