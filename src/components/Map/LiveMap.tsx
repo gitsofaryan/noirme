@@ -118,6 +118,7 @@ function LiveMapContent() {
     filteredHotspots,
     activeRoute,
     connectionFailed,
+    myUserId,
   } = useMapContext();
   
   const [bounds, setBounds] = useState<any>(null);
@@ -151,26 +152,34 @@ function LiveMapContent() {
       raw: any;
     }> = [];
 
-    list.push({
-      key: "me",
-      type: "me",
-      originalLat: location.lat,
-      originalLng: location.lng,
-      lat: location.lat,
-      lng: location.lng,
-      raw: null,
-    });
+    const userHostingHotspot = (userId: string) => {
+      return filteredHotspots.some(h => h.host_id === userId);
+    };
+
+    if (!userHostingHotspot(myUserId)) {
+      list.push({
+        key: "me",
+        type: "me",
+        originalLat: location.lat,
+        originalLng: location.lng,
+        lat: location.lat,
+        lng: location.lng,
+        raw: null,
+      });
+    }
 
     filteredUsers.forEach((u, idx) => {
-      list.push({
-        key: `user-${u.user_id || idx}`,
-        type: "user",
-        originalLat: u.lat,
-        originalLng: u.lng,
-        lat: u.lat,
-        lng: u.lng,
-        raw: u,
-      });
+      if (!userHostingHotspot(u.user_id)) {
+        list.push({
+          key: `user-${u.user_id || idx}`,
+          type: "user",
+          originalLat: u.lat,
+          originalLng: u.lng,
+          lat: u.lat,
+          lng: u.lng,
+          raw: u,
+        });
+      }
     });
 
     filteredHotspots.forEach((h) => {
