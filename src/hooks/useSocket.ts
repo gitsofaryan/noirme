@@ -20,6 +20,12 @@ interface UseSocketProps {
   onNewMessage: (data: any) => void;
   onWaveReceived: (data: any) => void;
   onUserDisconnected: (data: any) => void;
+  onChatRequestReceived?: (data: any) => void;
+  onChatRequestResponded?: (data: any) => void;
+  onNewDirectMessage?: (data: any) => void;
+  onDMHistory?: (data: any) => void;
+  onTypingIndicator?: (data: any) => void;
+  onChatsList?: (data: any) => void;
 }
 
 export function useSocket({
@@ -40,6 +46,12 @@ export function useSocket({
   onNewMessage,
   onWaveReceived,
   onUserDisconnected,
+  onChatRequestReceived,
+  onChatRequestResponded,
+  onNewDirectMessage,
+  onDMHistory,
+  onTypingIndicator,
+  onChatsList,
 }: UseSocketProps) {
   const [socketReady, setSocketReady] = useState(false);
   const [connectionState, setConnectionState] = useState<
@@ -48,6 +60,49 @@ export function useSocket({
   const [offlineMessages, setOfflineMessagesState] = useState<any[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const offlineMessagesRef = useRef<any[]>([]);
+  const [connectionFailed, setConnectionFailed] = useState(false);
+
+  // Store all callbacks in a ref to avoid closure issues during WebSocket reconnection cycles
+  const callbacksRef = useRef({
+    onSync,
+    onLocationUpdate,
+    onHotspotsList,
+    onHotspotCreated,
+    onJoinRequestReceived,
+    onJoinResponse,
+    onRoomSync,
+    onNewMessage,
+    onWaveReceived,
+    onUserDisconnected,
+    onChatRequestReceived,
+    onChatRequestResponded,
+    onNewDirectMessage,
+    onDMHistory,
+    onTypingIndicator,
+    onChatsList,
+  });
+
+  useEffect(() => {
+    callbacksRef.current = {
+      onSync,
+      onLocationUpdate,
+      onHotspotsList,
+      onHotspotCreated,
+      onJoinRequestReceived,
+      onJoinResponse,
+      onRoomSync,
+      onNewMessage,
+      onWaveReceived,
+      onUserDisconnected,
+      onChatRequestReceived,
+      onChatRequestResponded,
+      onNewDirectMessage,
+      onDMHistory,
+      onTypingIndicator,
+      onChatsList,
+    };
+  });
+
 
   // Send a helper to set offline messages
   const setOfflineMessages = (msgs: any[]) => {
@@ -95,11 +150,13 @@ export function useSocket({
         if (!mounted) return;
         setSocketReady(true);
         setConnectionState("connected");
+        setConnectionFailed(false);
         retryCount = 0;
 
         const activeWs = ws;
         if (activeWs) {
           activeWs.send(JSON.stringify({ type: "request_sync" }));
+          activeWs.send(JSON.stringify({ type: "request_chats" }));
 
           // Flush offline messages
           if (offlineMessagesRef.current.length > 0) {
@@ -128,34 +185,52 @@ export function useSocket({
 
           switch (msg.type) {
             case "sync":
-              onSync(msg);
+              callbacksRef.current.onSync(msg);
               break;
             case "location_update":
-              onLocationUpdate(msg);
+              callbacksRef.current.onLocationUpdate(msg);
               break;
             case "hotspots_list":
-              onHotspotsList(msg);
+              callbacksRef.current.onHotspotsList(msg);
               break;
             case "hotspot_created":
-              onHotspotCreated(msg);
+              callbacksRef.current.onHotspotCreated(msg);
               break;
             case "join_request_received":
-              onJoinRequestReceived(msg);
+              callbacksRef.current.onJoinRequestReceived(msg);
               break;
             case "join_response":
-              onJoinResponse(msg);
+              callbacksRef.current.onJoinResponse(msg);
               break;
             case "room_sync":
-              onRoomSync(msg);
+              callbacksRef.current.onRoomSync(msg);
               break;
             case "new_message":
-              onNewMessage(msg);
+              callbacksRef.current.onNewMessage(msg);
               break;
             case "wave_received":
-              onWaveReceived(msg);
+              callbacksRef.current.onWaveReceived(msg);
               break;
             case "user_disconnected":
-              onUserDisconnected(msg);
+              callbacksRef.current.onUserDisconnected(msg);
+              break;
+            case "chat_request_received":
+              callbacksRef.current.onChatRequestReceived?.(msg);
+              break;
+            case "chat_request_responded":
+              callbacksRef.current.onChatRequestResponded?.(msg);
+              break;
+            case "new_direct_message":
+              callbacksRef.current.onNewDirectMessage?.(msg);
+              break;
+            case "dm_history":
+              callbacksRef.current.onDMHistory?.(msg);
+              break;
+            case "direct_message_typing":
+              callbacksRef.current.onTypingIndicator?.(msg);
+              break;
+            case "chats_list":
+              callbacksRef.current.onChatsList?.(msg);
               break;
             default:
               break;
@@ -179,6 +254,9 @@ export function useSocket({
         const delay = Math.min(10000, Math.pow(2, retryCount) * 1000) + (Math.random() - 0.5) * 1000;
         console.log(`[noirme] Socket closed. Reconnecting in ${Math.round(delay)}ms...`);
         retryCount++;
+        if (retryCount >= 3) {
+          setConnectionFailed(true);
+        }
         retryTimer = setTimeout(connect, Math.max(1000, delay));
       };
     };
@@ -245,6 +323,8 @@ export function useSocket({
     profile?.age,
     profile?.blockedUsers,
     localBlocks,
+    profile?.radarRange,
+    profile?.hotspotRange,
   ]);
 
   // Helper send methods
@@ -363,10 +443,60 @@ export function useSocket({
     return true;
   };
 
+  const sendChatRequest = (targetUserId: string) => {
+    return send({
+      type: "send_chat_request",
+      target_user_id: targetUserId,
+    });
+  };
+
+  const respondChatRequest = (senderId: string, status: "accepted" | "rejected") => {
+    return send({
+      type: "respond_chat_request",
+      sender_id: senderId,
+      status,
+    });
+  };
+
+  const sendDirectMessage = (recipientId: string, text: string) => {
+    const sanitizedText = text
+      .trim()
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return send({
+      type: "send_direct_message",
+      recipient_id: recipientId,
+      text: sanitizedText,
+    });
+  };
+
+  const sendTypingState = (recipientId: string, isTyping: boolean) => {
+    return send({
+      type: "direct_message_typing",
+      recipient_id: recipientId,
+      is_typing: isTyping,
+    });
+  };
+
+  const requestChats = () => {
+    return send({
+      type: "request_chats",
+    });
+  };
+
+  const requestDMHistory = (targetUserId: string) => {
+    return send({
+      type: "request_dm_history",
+      target_user_id: targetUserId,
+    });
+  };
+
   return {
     socketReady,
     connectionState,
     offlineMessages,
+    connectionFailed,
     requestSync,
     sendWave,
     createHotspot,
@@ -374,5 +504,11 @@ export function useSocket({
     respondRequest,
     leaveHotspot,
     sendMessage,
+    sendChatRequest,
+    respondChatRequest,
+    sendDirectMessage,
+    sendTypingState,
+    requestChats,
+    requestDMHistory,
   };
 }

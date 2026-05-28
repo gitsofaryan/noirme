@@ -88,6 +88,25 @@ interface Hotspot {
   hotspotRange?: number;
 }
 
+interface DirectMessage {
+  id: string;
+  sender_id: string;
+  sender_username: string;
+  sender_avatar: string;
+  recipient_id: string;
+  text: string;
+  timestamp: number;
+}
+
+interface ChatRequest {
+  sender_id: string;
+  sender_username: string;
+  sender_avatar: string;
+  target_id: string;
+  status: "pending" | "accepted" | "rejected";
+  timestamp: number;
+}
+
 // ── Zod Message Validation Schemas ───────────────────────────────────────────
 const LocationUpdateSchema = z.object({
   type: z.literal("location_update"),
@@ -97,13 +116,10 @@ const LocationUpdateSchema = z.object({
   vibeEmoji: z.string().optional(),
   lat: z.number(),
   lng: z.number(),
-  bio: z.string().optional().nullable(),
-  selectedTags: z.array(z.string()).optional().nullable(),
+  bio: z.string().max(200).optional().nullable(),
+  selectedTags: z.array(z.string().max(50)).max(6).optional().nullable(),
   gender: z.string().optional().nullable(),
-  age: z
-    .union([z.number(), z.string(), z.literal("")])
-    .optional()
-    .nullable(),
+  age: z.union([z.number(), z.string(), z.literal("")]).optional().nullable(),
   blockedUsers: z.array(z.string()).optional().nullable(),
   radarRange: z.number().optional().nullable(),
   hotspotRange: z.number().optional().nullable(),
@@ -115,16 +131,13 @@ const CreateHotspotSchema = z.object({
   username: z.string(),
   avatar_url: z.string(),
   vibeEmoji: z.string(),
-  title: z.string(),
+  title: z.string().min(1).max(100),
   lat: z.number(),
   lng: z.number(),
-  host_bio: z.string().optional().nullable(),
-  host_tags: z.array(z.string()).optional().nullable(),
+  host_bio: z.string().max(200).optional().nullable(),
+  host_tags: z.array(z.string().max(50)).max(6).optional().nullable(),
   host_gender: z.string().optional().nullable(),
-  host_age: z
-    .union([z.number(), z.string(), z.literal("")])
-    .optional()
-    .nullable(),
+  host_age: z.union([z.number(), z.string(), z.literal("")]).optional().nullable(),
   hotspotRange: z.number().optional().nullable(),
 });
 
@@ -146,7 +159,7 @@ const RespondJoinSchema = z.object({
 const SendMessageSchema = z.object({
   type: z.literal("send_message"),
   roomId: z.string(),
-  text: z.string(),
+  text: z.string().min(1).max(500),
   sender_id: z.string(),
   sender_username: z.string(),
   sender_avatar: z.string(),
@@ -165,6 +178,38 @@ const SendWaveSchema = z.object({
   sender_username: z.string(),
 });
 
+const SendChatRequestSchema = z.object({
+  type: z.literal("send_chat_request"),
+  target_user_id: z.string(),
+});
+
+const RespondChatRequestSchema = z.object({
+  type: z.literal("respond_chat_request"),
+  sender_id: z.string(),
+  status: z.enum(["accepted", "rejected"]),
+});
+
+const SendDirectMessageSchema = z.object({
+  type: z.literal("send_direct_message"),
+  recipient_id: z.string(),
+  text: z.string().min(1).max(500),
+});
+
+const DirectMessageTypingSchema = z.object({
+  type: z.literal("direct_message_typing"),
+  recipient_id: z.string(),
+  is_typing: z.boolean(),
+});
+
+const RequestChatsSchema = z.object({
+  type: z.literal("request_chats"),
+});
+
+const RequestDMHistorySchema = z.object({
+  type: z.literal("request_dm_history"),
+  target_user_id: z.string(),
+});
+
 const IncomingMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("request_sync") }),
   LocationUpdateSchema,
@@ -174,6 +219,12 @@ const IncomingMessageSchema = z.discriminatedUnion("type", [
   SendMessageSchema,
   LeaveHotspotSchema,
   SendWaveSchema,
+  SendChatRequestSchema,
+  RespondChatRequestSchema,
+  SendDirectMessageSchema,
+  DirectMessageTypingSchema,
+  RequestChatsSchema,
+  RequestDMHistorySchema,
 ]);
 
 // ── In-Memory Fallback State (used if Redis is inactive/not configured) ──────
@@ -182,28 +233,46 @@ const hotspotsLocal = new Map<string, Hotspot>();
 const lastBroadcastTime = new Map<string, number>(); // userId -> timestamp for throttle
 const rateLimits = new Map<WebSocket, { count: number; resetAt: number }>();
 
+// Chat state (local fallback)
+const chatRequestsLocal = new Map<string, ChatRequest>(); // key: "senderId:targetId"
+const directMessagesLocal = new Map<string, DirectMessage[]>(); // key: "sortedUserA:sortedUserB"
+
 // ── Redis Clients ────────────────────────────────────────────────────────────
 let redisPub: ReturnType<typeof createClient> | null = null;
 let redisSub: ReturnType<typeof createClient> | null = null;
 let useRedis = false;
 
-// ── Clean Expired Hotspots Loop ──────────────────────────────────────────────
+// ── Clean Expired Data Loop (1 min) ──────────────────────────────────────────
 setInterval(async () => {
   const now = Date.now();
+  const dayAgo = now - 24 * 60 * 60 * 1000;
+
   if (useRedis && redisPub) {
     try {
+      // Hotspots cleanup
       const allHotspots = await redisPub.hGetAll("noirme:hotspots");
       let changed = false;
       for (const [id, raw] of Object.entries(allHotspots)) {
         const hotspot: Hotspot = JSON.parse(raw);
         if (hotspot.expires_at < now) {
           await redisPub.hDel("noirme:hotspots", id);
+          await redisPub.zRem("noirme:hotspot_locations", id);
           logEvent("hotspot_expired", { id });
           changed = true;
         }
       }
       if (changed) {
         publishHotspotUpdate();
+      }
+
+      // Chat requests cleanup
+      const allRequests = await redisPub.hGetAll("noirme:chat_requests");
+      for (const [key, raw] of Object.entries(allRequests)) {
+        const req: ChatRequest = JSON.parse(raw);
+        if (req.timestamp < dayAgo) {
+          await redisPub.hDel("noirme:chat_requests", key);
+          logEvent("redis_chat_request_expired", { key });
+        }
       }
     } catch (e: any) {
       logEvent("redis_cleanup_error", { error: e.message });
@@ -223,6 +292,27 @@ setInterval(async () => {
         type: "hotspots_list",
         hotspots: Array.from(hotspotsLocal.values()),
       });
+    }
+
+    // Prune local expired chat requests
+    for (const [key, req] of chatRequestsLocal.entries()) {
+      if (req.timestamp < dayAgo) {
+        chatRequestsLocal.delete(key);
+        logEvent("local_chat_request_expired", { key });
+      }
+    }
+
+    // Prune local expired direct messages
+    for (const [convoId, msgs] of directMessagesLocal.entries()) {
+      const filtered = msgs.filter((m) => m.timestamp > dayAgo);
+      if (filtered.length !== msgs.length) {
+        if (filtered.length === 0) {
+          directMessagesLocal.delete(convoId);
+        } else {
+          directMessagesLocal.set(convoId, filtered);
+        }
+        logEvent("local_dms_expired", { convoId, deleted_count: msgs.length - filtered.length });
+      }
     }
   }
 }, 60 * 1000);
@@ -268,6 +358,72 @@ function findLocalSocketByUserId(userId: string): WebSocket | null {
     }
   }
   return null;
+}
+
+// ── Chat Synchronization Helpers ─────────────────────────────────────────────
+async function sendChatsSync(ws: WebSocket, userId: string) {
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  let allRequests: ChatRequest[] = [];
+
+  if (useRedis && redisPub) {
+    try {
+      const raw = await redisPub.hGetAll("noirme:chat_requests");
+      for (const [key, rawVal] of Object.entries(raw)) {
+        const req: ChatRequest = JSON.parse(rawVal);
+        if (req.timestamp < dayAgo) {
+          await redisPub.hDel("noirme:chat_requests", key);
+        } else {
+          allRequests.push(req);
+        }
+      }
+    } catch (e: any) {
+      logEvent("redis_sync_chats_error", { error: e.message });
+    }
+  } else {
+    // Local fallback
+    for (const [key, req] of chatRequestsLocal.entries()) {
+      if (req.timestamp < dayAgo) {
+        chatRequestsLocal.delete(key);
+      } else {
+        allRequests.push(req);
+      }
+    }
+  }
+
+  // Filter requests involving the current user
+  const userRequests = allRequests.filter(
+    (r) => r.sender_id === userId || r.target_id === userId
+  );
+
+  ws.send(
+    JSON.stringify({
+      type: "chats_list",
+      requests: userRequests,
+    })
+  );
+}
+
+async function triggerChatsSync(userId: string) {
+  const localSocket = findLocalSocketByUserId(userId);
+  if (localSocket) {
+    await sendChatsSync(localSocket, userId);
+  }
+
+  if (useRedis && redisPub) {
+    try {
+      await redisPub.publish(
+        "noirme:direct_notifications",
+        JSON.stringify({
+          target_user_id: userId,
+          payload: {
+            type: "chats_sync_needed",
+          },
+        })
+      );
+    } catch (e: any) {
+      logEvent("redis_trigger_chats_sync_failed", { error: e.message });
+    }
+  }
 }
 
 // ── Redis Communication Helpers ──────────────────────────────────────────────
@@ -581,6 +737,35 @@ wss.on("connection", async (ws: any) => {
       }
 
       const data = validation.data;
+
+      // Identity verification: Ensure client registers location first and verify matching user_id/sender_id
+      const boundClient = clientsLocal.get(ws);
+      if (boundClient) {
+        const incomingUserId = (data as any).user_id || (data as any).sender_id;
+        if (incomingUserId && incomingUserId !== boundClient.user_id) {
+          logEvent("identity_mismatch_rejected", {
+            bound_id: boundClient.user_id,
+            incoming_id: incomingUserId,
+            type: data.type,
+          });
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              message: "Identity mismatch",
+            }),
+          );
+          return;
+        }
+      } else if (data.type !== "location_update") {
+        logEvent("unregistered_client_action_rejected", { type: data.type });
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "Client must register location first",
+          }),
+        );
+        return;
+      }
 
       if (data.type === "request_sync") {
         await sendSync(ws);
@@ -1016,6 +1201,9 @@ wss.on("connection", async (ws: any) => {
             };
 
             hotspot.messages.push(newMessage);
+            if (hotspot.messages.length > 100) {
+              hotspot.messages = hotspot.messages.slice(-100);
+            }
             await redisPub.hSet(
               "noirme:hotspots",
               roomId,
@@ -1054,6 +1242,9 @@ wss.on("connection", async (ws: any) => {
             };
 
             hotspot.messages.push(newMessage);
+            if (hotspot.messages.length > 100) {
+              hotspot.messages = hotspot.messages.slice(-100);
+            }
 
             const recipientIds = hotspot.requests
               .filter((r) => r.status === "accepted")
@@ -1166,6 +1357,270 @@ wss.on("connection", async (ws: any) => {
             );
           }
         }
+      } else if (data.type === "send_chat_request") {
+        const { target_user_id } = data;
+        const senderInfo = clientsLocal.get(ws);
+        if (!senderInfo) return;
+
+        const reqKey = `${senderInfo.user_id}:${target_user_id}`;
+        
+        // Prevent duplicate pending chat requests (anti-spam)
+        let existingRequest: ChatRequest | null = null;
+        if (useRedis && redisPub) {
+          const raw = await redisPub.hGet("noirme:chat_requests", reqKey);
+          if (raw) existingRequest = JSON.parse(raw);
+        } else {
+          existingRequest = chatRequestsLocal.get(reqKey) || null;
+        }
+
+        if (existingRequest && existingRequest.status === "pending") {
+          logEvent("chat_request_spam_prevented", { sender_id: senderInfo.user_id, target_id: target_user_id });
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              message: "A pending chat request already exists.",
+            })
+          );
+          return;
+        }
+
+        const newRequest: ChatRequest = {
+          sender_id: senderInfo.user_id,
+          sender_username: senderInfo.username,
+          sender_avatar: senderInfo.avatar_url,
+          target_id: target_user_id,
+          status: "pending",
+          timestamp: Date.now(),
+        };
+
+        logEvent("chat_request_sent", { sender_id: senderInfo.user_id, target_id: target_user_id });
+
+        if (useRedis && redisPub) {
+          await redisPub.hSet("noirme:chat_requests", reqKey, JSON.stringify(newRequest));
+          await redisPub.publish(
+            "noirme:direct_notifications",
+            JSON.stringify({
+              target_user_id,
+              payload: {
+                type: "chat_request_received",
+                request: newRequest,
+              },
+            })
+          );
+        } else {
+          chatRequestsLocal.set(reqKey, newRequest);
+          const targetSocket = findLocalSocketByUserId(target_user_id);
+          if (targetSocket) {
+            targetSocket.send(
+              JSON.stringify({
+                type: "chat_request_received",
+                request: newRequest,
+              })
+            );
+          }
+        }
+
+        await sendChatsSync(ws, senderInfo.user_id);
+
+      } else if (data.type === "respond_chat_request") {
+        const { sender_id, status } = data;
+        const responderInfo = clientsLocal.get(ws);
+        if (!responderInfo) return;
+
+        const reqKey = `${sender_id}:${responderInfo.user_id}`;
+        let request: ChatRequest | null = null;
+
+        if (useRedis && redisPub) {
+          const raw = await redisPub.hGet("noirme:chat_requests", reqKey);
+          if (raw) request = JSON.parse(raw);
+        } else {
+          request = chatRequestsLocal.get(reqKey) || null;
+        }
+
+        if (!request) return;
+
+        request.status = status;
+        logEvent("chat_request_responded", { sender_id, target_id: responderInfo.user_id, status });
+
+        if (useRedis && redisPub) {
+          await redisPub.hSet("noirme:chat_requests", reqKey, JSON.stringify(request));
+          await redisPub.publish(
+            "noirme:direct_notifications",
+            JSON.stringify({
+              target_user_id: sender_id,
+              payload: {
+                type: "chat_request_responded",
+                request,
+              },
+            })
+          );
+        } else {
+          chatRequestsLocal.set(reqKey, request);
+          const senderSocket = findLocalSocketByUserId(sender_id);
+          if (senderSocket) {
+            senderSocket.send(
+              JSON.stringify({
+                type: "chat_request_responded",
+                request,
+              })
+            );
+          }
+        }
+
+        await sendChatsSync(ws, responderInfo.user_id);
+        await triggerChatsSync(sender_id);
+
+      } else if (data.type === "send_direct_message") {
+        const { recipient_id, text } = data;
+        const senderInfo = clientsLocal.get(ws);
+        if (!senderInfo) return;
+
+        const keyA = `${senderInfo.user_id}:${recipient_id}`;
+        const keyB = `${recipient_id}:${senderInfo.user_id}`;
+        let requestA: ChatRequest | null = null;
+        let requestB: ChatRequest | null = null;
+
+        if (useRedis && redisPub) {
+          const rawA = await redisPub.hGet("noirme:chat_requests", keyA);
+          const rawB = await redisPub.hGet("noirme:chat_requests", keyB);
+          if (rawA) requestA = JSON.parse(rawA);
+          if (rawB) requestB = JSON.parse(rawB);
+        } else {
+          requestA = chatRequestsLocal.get(keyA) || null;
+          requestB = chatRequestsLocal.get(keyB) || null;
+        }
+
+        // NOTE: Acceptable race window exists if user A sends a DM at the exact moment user B rejects the chat request.
+        const isFriend =
+          (requestA && requestA.status === "accepted") ||
+          (requestB && requestB.status === "accepted");
+
+        if (!isFriend) {
+          logEvent("send_dm_blocked_not_friends", { sender_id: senderInfo.user_id, recipient_id });
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              message: "Cannot send direct message. You must be connected first.",
+            })
+          );
+          return;
+        }
+
+        const msgId = `dm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const directMsg: DirectMessage = {
+          id: msgId,
+          sender_id: senderInfo.user_id,
+          sender_username: senderInfo.username,
+          sender_avatar: senderInfo.avatar_url,
+          recipient_id,
+          text: sanitizeInput(text),
+          timestamp: Date.now(),
+        };
+
+        const convoId = [senderInfo.user_id, recipient_id].sort().join(":");
+        logEvent("direct_message_sent", { convoId, sender_id: senderInfo.user_id });
+
+        if (useRedis && redisPub) {
+          await redisPub.zAdd(`noirme:dm_history:${convoId}`, {
+            score: directMsg.timestamp,
+            value: JSON.stringify(directMsg),
+          });
+          await redisPub.expire(`noirme:dm_history:${convoId}`, 24 * 60 * 60);
+
+          await redisPub.publish(
+            "noirme:direct_notifications",
+            JSON.stringify({
+              target_user_id: recipient_id,
+              payload: {
+                type: "new_direct_message",
+                message: directMsg,
+              },
+            })
+          );
+        } else {
+          const list = directMessagesLocal.get(convoId) || [];
+          list.push(directMsg);
+          directMessagesLocal.set(convoId, list);
+
+          const recipientSocket = findLocalSocketByUserId(recipient_id);
+          if (recipientSocket) {
+            recipientSocket.send(
+              JSON.stringify({
+                type: "new_direct_message",
+                message: directMsg,
+              })
+            );
+          }
+        }
+
+        ws.send(
+          JSON.stringify({
+            type: "new_direct_message",
+            message: directMsg,
+          })
+        );
+
+      } else if (data.type === "direct_message_typing") {
+        const { recipient_id, is_typing } = data;
+        const senderInfo = clientsLocal.get(ws);
+        if (!senderInfo) return;
+
+        if (useRedis && redisPub) {
+          await redisPub.publish(
+            "noirme:direct_notifications",
+            JSON.stringify({
+              target_user_id: recipient_id,
+              payload: {
+                type: "direct_message_typing",
+                sender_id: senderInfo.user_id,
+                is_typing,
+              },
+            })
+          );
+        } else {
+          const recipientSocket = findLocalSocketByUserId(recipient_id);
+          if (recipientSocket) {
+            recipientSocket.send(
+              JSON.stringify({
+                type: "direct_message_typing",
+                sender_id: senderInfo.user_id,
+                is_typing,
+              })
+            );
+          }
+        }
+
+      } else if (data.type === "request_chats") {
+        const user = clientsLocal.get(ws);
+        if (user) {
+          await sendChatsSync(ws, user.user_id);
+        }
+
+      } else if (data.type === "request_dm_history") {
+        const { target_user_id } = data;
+        const senderInfo = clientsLocal.get(ws);
+        if (!senderInfo) return;
+
+        const convoId = [senderInfo.user_id, target_user_id].sort().join(":");
+        const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+        let messages: DirectMessage[] = [];
+
+        if (useRedis && redisPub) {
+          const raw = await redisPub.zRangeByScore(`noirme:dm_history:${convoId}`, dayAgo, "+inf");
+          messages = raw.map((r) => JSON.parse(r));
+        } else {
+          const list = directMessagesLocal.get(convoId) || [];
+          messages = list.filter((m) => m.timestamp > dayAgo);
+          directMessagesLocal.set(convoId, messages);
+        }
+
+        ws.send(
+          JSON.stringify({
+            type: "dm_history",
+            target_user_id,
+            messages,
+          })
+        );
       }
     } catch (e: any) {
       logEvent("message_handle_exception", {
@@ -1239,65 +1694,85 @@ async function initRedis() {
     logEvent("redis_connected");
 
     await redisSub.subscribe("noirme:location_updates", (message) => {
-      const payload = JSON.parse(message);
-      if (payload.type === "location_update") {
-        broadcastLocationUpdate(payload.data);
-      } else {
-        broadcastLocal(payload);
+      try {
+        const payload = JSON.parse(message);
+        if (payload.type === "location_update") {
+          broadcastLocationUpdate(payload.data);
+        } else {
+          broadcastLocal(payload);
+        }
+      } catch (err: any) {
+        logEvent("redis_subscriber_error", { channel: "noirme:location_updates", error: err.message });
       }
     });
 
     await redisSub.subscribe("noirme:hotspots_updates", (message) => {
-      const payload = JSON.parse(message);
-      broadcastLocal(payload);
+      try {
+        const payload = JSON.parse(message);
+        broadcastLocal(payload);
+      } catch (err: any) {
+        logEvent("redis_subscriber_error", { channel: "noirme:hotspots_updates", error: err.message });
+      }
     });
 
     await redisSub.subscribe("noirme:chat_messages", (message) => {
-      const payload = JSON.parse(message);
-      if (payload.rosterUpdateOnly) {
-        const recipientIds = payload.hotspot.requests
-          .filter((r: any) => r.status === "accepted")
-          .map((r: any) => r.user_id);
-        recipientIds.push(payload.hotspot.host_id);
+      try {
+        const payload = JSON.parse(message);
+        if (payload.rosterUpdateOnly) {
+          const recipientIds = payload.hotspot.requests
+            .filter((r: any) => r.status === "accepted")
+            .map((r: any) => r.user_id);
+          recipientIds.push(payload.hotspot.host_id);
 
-        recipientIds.forEach((uid: string) => {
-          const localSocket = findLocalSocketByUserId(uid);
-          if (localSocket) {
-            localSocket.send(
-              JSON.stringify({
-                type: "room_sync",
-                roomId: payload.roomId,
-                hotspot: payload.hotspot,
-              }),
-            );
+          recipientIds.forEach((uid: string) => {
+            const localSocket = findLocalSocketByUserId(uid);
+            if (localSocket) {
+              localSocket.send(
+                JSON.stringify({
+                  type: "room_sync",
+                  roomId: payload.roomId,
+                  hotspot: payload.hotspot,
+                }),
+              );
+            }
+          });
+        } else {
+          const recipientIds: string[] = payload.members;
+          if (!recipientIds.includes(payload.host_id)) {
+            recipientIds.push(payload.host_id);
           }
-        });
-      } else {
-        const recipientIds: string[] = payload.members;
-        if (!recipientIds.includes(payload.host_id)) {
-          recipientIds.push(payload.host_id);
+
+          recipientIds.forEach((uid) => {
+            const localSocket = findLocalSocketByUserId(uid);
+            if (localSocket) {
+              localSocket.send(
+                JSON.stringify({
+                  type: "new_message",
+                  roomId: payload.roomId,
+                  message: payload.message,
+                }),
+              );
+            }
+          });
         }
-
-        recipientIds.forEach((uid) => {
-          const localSocket = findLocalSocketByUserId(uid);
-          if (localSocket) {
-            localSocket.send(
-              JSON.stringify({
-                type: "new_message",
-                roomId: payload.roomId,
-                message: payload.message,
-              }),
-            );
-          }
-        });
+      } catch (err: any) {
+        logEvent("redis_subscriber_error", { channel: "noirme:chat_messages", error: err.message });
       }
     });
 
     await redisSub.subscribe("noirme:direct_notifications", (message) => {
-      const { target_user_id, payload } = JSON.parse(message);
-      const localSocket = findLocalSocketByUserId(target_user_id);
-      if (localSocket) {
-        localSocket.send(JSON.stringify(payload));
+      try {
+        const { target_user_id, payload } = JSON.parse(message);
+        const localSocket = findLocalSocketByUserId(target_user_id);
+        if (localSocket) {
+          if (payload.type === "chats_sync_needed") {
+            sendChatsSync(localSocket, target_user_id);
+          } else {
+            localSocket.send(JSON.stringify(payload));
+          }
+        }
+      } catch (err: any) {
+        logEvent("redis_subscriber_error", { channel: "noirme:direct_notifications", error: err.message });
       }
     });
   } catch (err: any) {
@@ -1348,7 +1823,6 @@ const shutdown = async () => {
 
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
 
 // Boot server with error handling
 initRedis()
