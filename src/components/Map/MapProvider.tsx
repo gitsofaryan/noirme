@@ -118,6 +118,7 @@ interface MapContextType {
   sendTypingState: (isTyping: boolean) => void;
   requestDMHistory: (targetUserId: string) => void;
   isLoadingHistory: boolean;
+  unreadMessagesCount: number;
 
   // WebRTC Live Audio
   isBroadcastingAudio: boolean;
@@ -163,7 +164,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
       try {
         const local = JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
         setLocalBlocks(local);
-      } catch (e) {}
+      } catch (e) { }
     };
     window.addEventListener("storage", syncBlocks);
     return () => window.removeEventListener("storage", syncBlocks);
@@ -269,33 +270,144 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [peerTyping, setPeerTyping] = useState<Record<string, boolean>>({});
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  // Automatically load DM history from local Puter cache and request fresh history from WS when activeChatUser changes
+  // Unread messages tracking (debounced localStorage save)
+  const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return JSON.parse(localStorage.getItem("noirme_unread_messages") || "{}");
+      } catch (e) {
+        return {};
+      }
+    }
+    return {};
+  });
+
+  const unreadSaveTimeoutRef = useRef<any>(null);
   useEffect(() => {
-    if (!activeChatUser) {
+    if (unreadSaveTimeoutRef.current) {
+      clearTimeout(unreadSaveTimeoutRef.current);
+    }
+    unreadSaveTimeoutRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem("noirme_unread_messages", JSON.stringify(unreadMessages));
+      } catch (e) {
+        console.warn("[noirme] Failed to save unread messages to localStorage");
+      }
+    }, 500);
+    return () => {
+      if (unreadSaveTimeoutRef.current) {
+        clearTimeout(unreadSaveTimeoutRef.current);
+      }
+    };
+  }, [unreadMessages]);
+
+  const unreadMessagesCount = useMemo(() => {
+    return Object.values(unreadMessages).reduce((a, b) => a + b, 0);
+  }, [unreadMessages]);
+
+  // Clear unread count when activeChatUser changes
+  useEffect(() => {
+    if (activeChatUser) {
+      setUnreadMessages((prev) => {
+        if (!prev[activeChatUser.user_id]) return prev;
+        const copy = { ...prev };
+        delete copy[activeChatUser.user_id];
+        return copy;
+      });
+    }
+  }, [activeChatUser]);
+
+  // Save accepted friends to Puter KV as a string array (debounced)
+  const friendsSaveTimeoutRef = useRef<any>(null);
+  useEffect(() => {
+    if (!myUserId || myUserId === "anon") return;
+    if (typeof window !== "undefined" && window.puter) {
+      if (friendsSaveTimeoutRef.current) {
+        clearTimeout(friendsSaveTimeoutRef.current);
+      }
+      friendsSaveTimeoutRef.current = setTimeout(() => {
+        const acceptedIds = chatRequests
+          .filter((r) => r.status === "accepted")
+          .map((r) => (r.sender_id === myUserId ? r.target_id : r.sender_id));
+
+        if (acceptedIds.length > 0) {
+          window.puter.kv.set(`friends_list_${myUserId}`, JSON.stringify(acceptedIds))
+            .catch((err: any) => console.warn("[noirme] Failed to save friends list"));
+        }
+      }, 1000);
+    }
+    return () => {
+      if (friendsSaveTimeoutRef.current) {
+        clearTimeout(friendsSaveTimeoutRef.current);
+      }
+    };
+  }, [chatRequests, myUserId]);
+
+  // Load accepted friends from Puter KV on login (instant load, runs once per session)
+  const friendsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (friendsLoadedRef.current || !myUserId || myUserId === "anon") return;
+    if (typeof window !== "undefined" && window.puter) {
+      friendsLoadedRef.current = true;
+      window.puter.kv.get(`friends_list_${myUserId}`)
+        .then((raw: any) => {
+          if (!raw) return;
+          try {
+            const friendIds = JSON.parse(raw);
+            if (Array.isArray(friendIds) && friendIds.length > 0) {
+              setChatRequests((prev) => {
+                const existingIds = new Set(prev.map(r => r.sender_id === myUserId ? r.target_id : r.sender_id));
+                const newPlaceholders = friendIds
+                  .filter((id: string) => !existingIds.has(id))
+                  .map((id: string) => ({
+                    sender_id: myUserId,
+                    sender_username: handle || myUserId,
+                    sender_avatar: myAvatarUrl,
+                    target_id: id,
+                    status: "accepted",
+                    timestamp: Date.now()
+                  }));
+                return newPlaceholders.length > 0 ? [...prev, ...newPlaceholders] : prev;
+              });
+            }
+          } catch (e) {
+            console.warn("[noirme] Failed to parse friends list from Puter KV");
+          }
+        })
+        .catch((err: any) => console.warn("[noirme] Failed to load friends list from Puter KV"));
+    }
+  }, [myUserId, handle, myAvatarUrl]);
+
+  // Load DM history from localStorage only (device-local, no server)
+  useEffect(() => {
+    if (!activeChatUser || !myUserId || myUserId === "anon") {
       setChatMessages([]);
       setIsLoadingHistory(false);
       return;
     }
 
-    setIsLoadingHistory(true);
     const targetUserId = activeChatUser.user_id;
-
-    // 1. Fetch from Puter KV cache immediately to avoid empty blank screen
     const convoId = [myUserId, targetUserId].sort().join(":");
-    if (typeof window !== "undefined" && window.puter) {
-      window.puter.kv.get(`chat_cache_${convoId}`).then((raw: any) => {
-        if (raw && activeChatUserRef.current?.user_id === targetUserId) {
-          try {
-            const cached = JSON.parse(raw);
-            setChatMessages(cached);
-          } catch (e) {}
-        }
-      }).catch(() => {});
-    }
 
-    // 2. Request fresh DM history from the server
-    socket.requestDMHistory(targetUserId);
-  }, [activeChatUser, myUserId]);
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(`chat_msgs_${convoId}`);
+        if (stored) {
+          const msgs = JSON.parse(stored);
+          const oneHourAgo = Date.now() - 60 * 60 * 1000;
+          const validMsgs = msgs.filter((m: any) => m.timestamp > oneHourAgo);
+          setChatMessages(validMsgs);
+          localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(validMsgs));
+        } else {
+          setChatMessages([]);
+        }
+      } catch (e) {
+        console.warn("[noirme] Failed to load chat from localStorage");
+        setChatMessages([]);
+      }
+    }
+    setIsLoadingHistory(false);
+  }, [activeChatUser?.user_id, myUserId]);
 
   const friends = useMemo(() => {
     return chatRequests
@@ -432,7 +544,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
         setActiveUsers((prev) => {
           const existingUser = prev.find((u) => u.user_id === msg.data.user_id);
           const filtered = prev.filter((u) => u.user_id !== msg.data.user_id);
-          
+
           if (!existingUser) {
             setNotifications((prevNotifs) =>
               [
@@ -568,7 +680,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
       const otherUser = msg.request.sender_id === myUserId ? msg.request.target_id : msg.request.sender_id;
       const otherInfo = activeUsers.find((u) => u.user_id === otherUser);
       const otherHandle = otherInfo?.username || "Someone";
-      
+
       if (isAccepted) {
         addToast(`✅ Connected with @${otherHandle}! You can now chat.`, "default");
       } else {
@@ -586,41 +698,48 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
           if (prev.some((m) => m.id === msg.message.id)) return prev;
           const newMsgs = [...prev, msg.message];
           const convoId = [myUserId, activeChatUserRef.current.user_id].sort().join(":");
-          if (typeof window !== "undefined" && window.puter) {
-            const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-            const filtered = newMsgs.filter((m) => m.timestamp > dayAgo);
-            window.puter.kv.set(`chat_cache_${convoId}`, JSON.stringify(filtered)).catch(() => {});
+          if (typeof window !== "undefined") {
+            try {
+              const oneHourAgo = Date.now() - 60 * 60 * 1000;
+              const filtered = newMsgs.filter((m) => m.timestamp > oneHourAgo);
+              localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filtered));
+            } catch (e) {
+              console.warn("[noirme] Failed to save chat to localStorage");
+            }
           }
           return newMsgs;
         });
       } else {
         if (msg.message.sender_id !== myUserId) {
           addToast(`✉️ New message from @${msg.message.sender_username}: "${msg.message.text.substring(0, 20)}${msg.message.text.length > 20 ? "..." : ""}"`, "default");
+          setUnreadMessages((prev) => ({
+            ...prev,
+            [msg.message.sender_id]: (prev[msg.message.sender_id] || 0) + 1,
+          }));
         }
-        if (typeof window !== "undefined" && window.puter) {
-          const otherUserId = msg.message.sender_id === myUserId ? msg.message.recipient_id : msg.message.sender_id;
-          const convoId = [myUserId, otherUserId].sort().join(":");
-          window.puter.kv.get(`chat_cache_${convoId}`).then((raw: any) => {
-            let list = raw ? JSON.parse(raw) : [];
+        if (typeof window !== "undefined") {
+          try {
+            const otherUserId = msg.message.sender_id === myUserId ? msg.message.recipient_id : msg.message.sender_id;
+            const convoId = [myUserId, otherUserId].sort().join(":");
+            let list = [];
+            const stored = localStorage.getItem(`chat_msgs_${convoId}`);
+            if (stored) {
+              list = JSON.parse(stored);
+            }
             if (!list.some((m: any) => m.id === msg.message.id)) {
               list.push(msg.message);
-              const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-              window.puter.kv.set(`chat_cache_${convoId}`, JSON.stringify(list.filter((m: any) => m.timestamp > dayAgo))).catch(() => {});
+              const oneHourAgo = Date.now() - 60 * 60 * 1000;
+              const filtered = list.filter((m: any) => m.timestamp > oneHourAgo);
+              localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filtered));
             }
-          }).catch(() => {});
+          } catch (e) {
+            console.warn("[noirme] Failed to cache message");
+          }
         }
       }
     },
     onDMHistory: (msg) => {
-      if (activeChatUserRef.current && msg.target_user_id === activeChatUserRef.current.user_id) {
-        setChatMessages(msg.messages);
-        setIsLoadingHistory(false);
-        const convoId = [myUserId, activeChatUserRef.current.user_id].sort().join(":");
-        if (typeof window !== "undefined" && window.puter) {
-          const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-          window.puter.kv.set(`chat_cache_${convoId}`, JSON.stringify(msg.messages.filter((m: any) => m.timestamp > dayAgo))).catch(() => {});
-        }
-      }
+      // Server history no longer used - all messages stored locally
     },
     onTypingIndicator: (msg) => {
       setPeerTyping((prev) => ({
@@ -694,28 +813,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     setSelectedHotspot(null);
   };
 
-  // Load DM history on selecting activeChatUser
-  useEffect(() => {
-    if (!activeChatUser) {
-      setChatMessages([]);
-      return;
-    }
-
-    if (typeof window !== "undefined" && window.puter) {
-      const convoId = [myUserId, activeChatUser.user_id].sort().join(":");
-      window.puter.kv.get(`chat_cache_${convoId}`)
-        .then((raw: string) => {
-          if (raw) {
-            const msgs = JSON.parse(raw);
-            const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-            setChatMessages(msgs.filter((m: any) => m.timestamp > dayAgo));
-          }
-        })
-        .catch((err: any) => console.warn("Puter KV load failed:", err));
-    }
-
-    socket.requestDMHistory(activeChatUser.user_id);
-  }, [activeChatUser?.user_id]);
+  // Deprecated - history loaded directly in main effect from localStorage
 
   const sendChatRequest = (targetUserId: string) => {
     socket.sendChatRequest(targetUserId);
@@ -726,7 +824,33 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   };
 
   const sendDirectMessage = (text: string) => {
-    if (!activeChatUser) return;
+    if (!activeChatUser || !myUserId || myUserId === "anon") return;
+
+    const optimisticMsg: DirectMessage = {
+      id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      sender_id: myUserId,
+      sender_username: handle || myUserId,
+      sender_avatar: myAvatarUrl,
+      recipient_id: activeChatUser.user_id,
+      text,
+      timestamp: Date.now(),
+    };
+
+    setChatMessages((prev) => {
+      const next = [...prev, optimisticMsg];
+      const convoId = [myUserId, activeChatUser.user_id].sort().join(":");
+      if (typeof window !== "undefined") {
+        try {
+          const oneHourAgo = Date.now() - 60 * 60 * 1000;
+          const filtered = next.filter((m) => m.timestamp > oneHourAgo);
+          localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filtered));
+        } catch (e) {
+          console.warn("[noirme] Failed to save chat to localStorage");
+        }
+      }
+      return next;
+    });
+
     socket.sendDirectMessage(activeChatUser.user_id, text);
   };
 
@@ -888,6 +1012,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     sendTypingState,
     requestDMHistory,
     isLoadingHistory,
+    unreadMessagesCount,
 
     isBroadcastingAudio: webRTC.isBroadcastingAudio,
     startBroadcast: webRTC.startBroadcast,
@@ -955,6 +1080,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     peerTyping,
     activeChatUser,
     isLoadingHistory,
+    unreadMessagesCount,
 
     webRTC.isBroadcastingAudio,
     webRTC.incomingStreams,

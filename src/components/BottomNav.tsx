@@ -11,7 +11,7 @@ import { useIsLoading } from "@/hooks/useLoading";
 export default function BottomNav() {
   const pathname = usePathname();
   const isLoading = useIsLoading();
-  const { chatRequests, myUserId, isInteracting, activeChatUser, selectedUser, selectedHotspot } = useMapContext();
+  const { chatRequests, myUserId, isInteracting, activeChatUser, selectedUser, selectedHotspot, unreadMessagesCount, filteredHotspots } = useMapContext();
   const { isSignedIn, user } = useAuth();
 
   const pendingIncomingCount = chatRequests.filter(
@@ -48,7 +48,6 @@ export default function BottomNav() {
             {navItems.map((item) => {
               const isActive = pathname === item.path;
               const Icon = item.icon;
-              const showBadge = item.name === "Chat" && pendingIncomingCount > 0;
 
               return (
                 <Link
@@ -74,10 +73,26 @@ export default function BottomNav() {
                           }`}
                         strokeWidth={isActive ? 2.5 : 1.8}
                       />
-                      {showBadge && (
-                        <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-rose-500 text-[8px] font-extrabold text-white animate-pulse">
-                          {pendingIncomingCount}
-                        </span>
+
+                      {/* Badge Indicators - Compact Stacked Layout */}
+                      {item.name === "Chat" && (
+                        <div className="absolute -top-2 -right-1 flex flex-col items-end gap-0.5 z-20 pointer-events-none select-none">
+                          {unreadMessagesCount > 0 && (
+                            <span key="dm" className="flex h-3.5 min-w-[14px] px-0.5 items-center justify-center rounded-full bg-emerald-500 text-[7px] font-extrabold text-white animate-bounce shadow-sm transition-transform">
+                              {unreadMessagesCount}
+                            </span>
+                          )}
+                          {pendingIncomingCount > 0 && (
+                            <span key="req" className="flex h-3.5 min-w-[14px] px-0.5 items-center justify-center rounded-full bg-rose-500 text-[7px] font-extrabold text-white animate-pulse shadow-sm transition-transform">
+                              {pendingIncomingCount}
+                            </span>
+                          )}
+                          {filteredHotspots.length > 0 && (
+                            <span key="hotspot" className="flex h-3.5 min-w-[14px] px-0.5 items-center justify-center rounded-full bg-amber-500 text-[7px] font-extrabold text-white shadow-sm transition-transform">
+                              {filteredHotspots.length}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
 

@@ -137,7 +137,12 @@ export function useOSM(mapBounds: { _southWest: { lat: number; lng: number }; _n
         }
       })
       .catch((err) => {
-        if (err.name !== "AbortError") {
+        // Silently ignore aborted requests
+        if (err.name === "AbortError") return;
+        
+        // Silently ignore transient network errors in production
+        // (Failed to fetch usually indicates temporary network issues)
+        if (typeof window !== "undefined" && window.location.hostname === "localhost") {
           console.warn("[noirme] OSM fetch error:", err);
         }
       });
