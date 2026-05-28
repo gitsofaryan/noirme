@@ -270,7 +270,7 @@ export default function ProfilePage() {
           transition={{ delay: 0.1 }}
           className="text-3xl font-black tracking-tight mb-2 text-zinc-900"
         >
-          noirme
+          norby
         </motion.h1>
 
         <motion.p
@@ -602,7 +602,7 @@ export default function ProfilePage() {
           className="w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 active:scale-[0.98] shadow-sm"
         >
           <LogOut size={16} />
-          Sign Out of Noirme
+          Sign Out of Norby
         </button>
       </div>
 

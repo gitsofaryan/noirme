@@ -377,7 +377,7 @@ const server = createServer(async (req, res) => {
   }
 
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Noirme WebSocket server is running.");
+  res.end("Norby WebSocket server is running.");
 });
 
 const wss = new WebSocketServer({ server });

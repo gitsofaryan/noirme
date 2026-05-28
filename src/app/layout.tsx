@@ -19,13 +19,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Noirme",
+  title: "Norby",
   description: "Real-time social proximity app",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Noirme",
+    title: "Norby",
   },
 };
 
