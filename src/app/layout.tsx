@@ -73,7 +73,7 @@ export default function RootLayout({
           <ErrorBoundary>
             <LoadingProvider>
               <MapProvider>
-                <main className="absolute inset-0 pb-16 overflow-hidden">
+                <main className="absolute inset-0 overflow-hidden">
                   {children}
                 </main>
                 <BottomNav />

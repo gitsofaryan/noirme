@@ -34,7 +34,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-zinc-50 text-zinc-900 select-none z-[99999]">
-          <div className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center border border-zinc-150 mb-6">
+          <div className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center border border-zinc-100 mb-6">
             <Compass className="w-8 h-8 text-black" />
           </div>
           <h2 className="text-xl font-bold tracking-tight text-zinc-900">Something went wrong</h2>

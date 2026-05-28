@@ -917,6 +917,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const refreshRadar = useCallback(() => {
     setFollowUser(true);
     setRecenterTrigger((t) => t + 1);
+    socket.requestSync();
     refreshLocation().then(() => {
       socket.requestSync();
     });

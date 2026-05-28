@@ -270,7 +270,7 @@ function LiveMapContent() {
   }
 
   return (
-    <div className="absolute inset-0 pb-16">
+    <div className="absolute inset-0">
       <AnimatePresence>
         {connectionFailed && (
           <motion.div

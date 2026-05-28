@@ -34,6 +34,11 @@ export function HotspotDrawer() {
         user_id: targetUserId,
         username: targetUsername,
         avatar_url: targetAvatarUrl,
+        vibeEmoji: selectedHotspot?.vibeEmoji || "🔥",
+        bio: selectedHotspot?.host_bio || "",
+        selectedTags: selectedHotspot?.host_tags || [],
+        gender: selectedHotspot?.host_gender || "",
+        age: selectedHotspot?.host_age || "",
         lat: selectedHotspot?.lat || 0,
         lng: selectedHotspot?.lng || 0,
       });
@@ -105,10 +110,10 @@ export function HotspotDrawer() {
                   <h3 className="text-sm font-bold text-zinc-900 leading-tight">
                     {selectedHotspot.title}
                   </h3>
-                  <p className="text-[10px] text-zinc-450 mt-0.5 font-semibold">
+                  <p className="text-[10px] text-zinc-500 mt-0.5 font-semibold">
                     {selectedHotspot.host_age ? `${selectedHotspot.host_age} y/o` : "Age not shared"} · {selectedHotspot.host_gender || "Gender not shared"}
                   </p>
-                  <p className="text-[10px] text-zinc-450 mt-1 flex items-center gap-1 font-bold">
+                  <p className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1 font-bold">
                     <MapPin size={10} className="text-zinc-400" /> {distanceStr}
                   </p>
                 </div>
@@ -116,7 +121,7 @@ export function HotspotDrawer() {
 
               <button
                 onClick={() => setSelectedHotspot(null)}
-                className="p-1.5 rounded-full bg-zinc-50 text-zinc-450 hover:text-zinc-650 hover:bg-zinc-100 transition-colors"
+                className="p-1.5 rounded-full bg-zinc-50 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
               >
                 <X size={14} />
               </button>
@@ -157,7 +162,7 @@ export function HotspotDrawer() {
                     {selectedHotspot.host_tags.map((tag: string) => (
                       <span
                         key={tag}
-                        className="px-2.5 py-1 bg-white border border-zinc-200/60 rounded-full text-[9px] font-semibold text-zinc-550"
+                        className="px-2.5 py-1 bg-white border border-zinc-200/60 rounded-full text-[9px] font-semibold text-zinc-600"
                       >
                         {tag}
                       </span>
@@ -211,7 +216,7 @@ export function HotspotDrawer() {
                               </button>
                               <button
                                 onClick={() => respondRequest(r.user_id, "declined")}
-                                className="px-3 py-1.5 rounded-xl bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-650 text-[10px] font-bold transition-all active:scale-95"
+                                className="px-3 py-1.5 rounded-xl bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-600 text-[10px] font-bold transition-all active:scale-95"
                               >
                                 Decline
                               </button>
@@ -238,7 +243,7 @@ export function HotspotDrawer() {
                           <div
                             key={r.user_id}
                             onClick={() => !isMe && handleUserClick(r.user_id, r.username, r.avatar_url)}
-                            className={`flex items-center gap-1.5 bg-zinc-100 border border-zinc-200/50 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-semibold text-zinc-750 ${
+                            className={`flex items-center gap-1.5 bg-zinc-100 border border-zinc-200/50 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-semibold text-zinc-700 ${
                               !isMe ? "cursor-pointer hover:bg-zinc-200 transition-colors" : ""
                             }`}
                           >
@@ -284,7 +289,7 @@ export function HotspotDrawer() {
                     </div>
                     <div>
                       <p className="text-xs font-bold text-zinc-800">Locked Room Chat</p>
-                      <p className="text-[11px] text-zinc-450 max-w-[280px] mx-auto mt-1 leading-relaxed">
+                      <p className="text-[11px] text-zinc-500 max-w-[280px] mx-auto mt-1 leading-relaxed">
                         Request to join the hotspot. Once approved by the host, you'll join the
                         private group chat to coordinate.
                       </p>
@@ -315,7 +320,7 @@ export function HotspotDrawer() {
                     </div>
                     <button
                       onClick={leaveHotspot}
-                      className="w-full py-3 rounded-2xl border border-zinc-250 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50 text-xs font-bold transition-all active:scale-[0.98]"
+                      className="w-full py-3 rounded-2xl border border-zinc-200 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50 text-xs font-bold transition-all active:scale-[0.98]"
                     >
                       Cancel Request
                     </button>
@@ -328,7 +333,7 @@ export function HotspotDrawer() {
                       <X size={18} strokeWidth={2} />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-zinc-850">Request Declined</p>
+                      <p className="text-xs font-bold text-zinc-800">Request Declined</p>
                       <p className="text-[11px] text-zinc-400 max-w-[280px] mx-auto mt-1 leading-relaxed">
                         Your request to join this hotspot was declined by the host. Explore other
                         hotspots nearby!
@@ -336,7 +341,7 @@ export function HotspotDrawer() {
                     </div>
                     <button
                       onClick={() => setSelectedHotspot(null)}
-                      className="w-full py-3 rounded-2xl bg-zinc-100 text-zinc-650 hover:bg-zinc-200 text-xs font-bold transition-all active:scale-[0.98]"
+                      className="w-full py-3 rounded-2xl bg-zinc-100 text-zinc-600 hover:bg-zinc-200 text-xs font-bold transition-all active:scale-[0.98]"
                     >
                       Close
                     </button>
@@ -364,7 +369,7 @@ export function HotspotDrawer() {
                               <div
                                 key={r.user_id}
                                 onClick={() => !isMe && handleUserClick(r.user_id, r.username, r.avatar_url)}
-                                className={`flex items-center gap-1.5 bg-zinc-100 border border-zinc-200/50 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-semibold text-zinc-750 ${
+                                className={`flex items-center gap-1.5 bg-zinc-100 border border-zinc-200/50 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-semibold text-zinc-700 ${
                                   !isMe ? "cursor-pointer hover:bg-zinc-200 transition-colors" : ""
                                 }`}
                               >

@@ -12,7 +12,7 @@ import { useIsLoading } from "@/hooks/useLoading";
 function BottomNavInner() {
   const pathname = usePathname();
   const isLoading = useIsLoading();
-  const { myUserId, isInteracting, selectedUser, selectedHotspot, filteredHotspots } = useMapContext();
+  const { myUserId, isInteracting, selectedUser, selectedHotspot, filteredHotspots, showSpaceDrawer } = useMapContext();
   const { chatRequests } = useSocialContext();
   const { activeChatUser, unreadMessagesCount } = useDMContext();
   const { isSignedIn, user } = useAuth();
@@ -35,7 +35,8 @@ function BottomNavInner() {
     isInteracting ||
     (pathname?.startsWith("/chat") && activeChatUser !== null) ||
     selectedUser !== null ||
-    selectedHotspot !== null;
+    selectedHotspot !== null ||
+    showSpaceDrawer;
 
   return (
     <AnimatePresence>

@@ -303,7 +303,7 @@ export default function ProfilePage() {
 
   // ─ Signed-in profile
   return (
-    <div className="h-full overflow-y-auto bg-zinc-50 text-zinc-900 pb-4">
+    <div className="h-full overflow-y-auto bg-zinc-50 text-zinc-900 pb-24">
 
       {/* ═══════════════ HERO CARD ═══════════════ */}
       <div className="bg-white mx-0 border-b border-zinc-100 relative">
@@ -596,7 +596,7 @@ export default function ProfilePage() {
       </div>
 
       {/* ═══════════════ SIGN OUT BUTTON ═══════════════ */}
-      <div className="mx-3 mt-3 mb-8">
+      <div className="mx-3 mt-3 mb-4">
         <button
           onClick={signOut}
           className="w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 active:scale-[0.98] shadow-sm"

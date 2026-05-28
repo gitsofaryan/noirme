@@ -420,7 +420,7 @@ export function useSocket({
   };
 
   const requestSync = () => {
-    return send({ type: "request_sync" });
+    return send({ type: "request_sync", user_id: userId });
   };
 
   const sendWave = (targetUserId: string) => {

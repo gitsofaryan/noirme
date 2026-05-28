@@ -118,13 +118,13 @@ export function ChatRoom({
                       isMe
                         ? "bg-zinc-900 text-white rounded-2xl rounded-tr-none font-medium"
                         : "bg-white border border-zinc-200/60 text-zinc-800 rounded-2xl rounded-tl-none font-medium"
-                    } ${m.isOffline ? "opacity-50 border border-dashed border-zinc-350 bg-zinc-100" : ""}`}
+                    } ${m.isOffline ? "opacity-50 border border-dashed border-zinc-300 bg-zinc-100" : ""}`}
                   >
                     {m.text}
                   </div>
                   <span className="text-[7px] text-zinc-400 mt-0.5 px-1 font-semibold flex items-center gap-1">
                     {m.isOffline ? (
-                      <span className="text-zinc-550 animate-pulse flex items-center gap-1 font-bold">
+                      <span className="text-zinc-500 animate-pulse flex items-center gap-1 font-bold">
                         <span className="inline-block w-1 h-1 rounded-full bg-zinc-400 animate-ping" />
                         Queued
                       </span>
@@ -151,7 +151,7 @@ export function ChatRoom({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
           placeholder="Type message..."
-          className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 placeholder-zinc-450 focus:outline-none focus:border-zinc-400 transition-colors"
+          className="flex-1 bg-zinc-50 border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-zinc-400 transition-colors"
         />
         <button
           onClick={handleSend}

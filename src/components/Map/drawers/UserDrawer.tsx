@@ -84,7 +84,7 @@ export function UserDrawer() {
                 <div className="relative">
                   <img
                     src={selectedUser.avatar_url || getAvatarUrl(selectedUser.username)}
-                    className="w-14 h-14 rounded-full object-cover border border-zinc-150 bg-zinc-50"
+                    className="w-14 h-14 rounded-full object-cover border border-zinc-100 bg-zinc-50"
                     alt={selectedUser.username}
                   />
                   <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white border border-zinc-200 rounded-full flex items-center justify-center text-sm shadow-sm">
@@ -98,7 +98,7 @@ export function UserDrawer() {
                   <p className="text-[10px] text-zinc-400 font-semibold mt-0.5">
                     {selectedUser.age ? `${selectedUser.age} y/o` : "Age not shared"} · {selectedUser.gender || "Gender not shared"}
                   </p>
-                  <p className="text-[10px] text-zinc-450 mt-1 flex items-center gap-1 font-bold">
+                  <p className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1 font-bold">
                     <MapPin size={10} className="text-zinc-400" />
                     {(() => {
                       if (!location) return "Unknown distance";
@@ -111,7 +111,7 @@ export function UserDrawer() {
 
               <button
                 onClick={() => setSelectedUser(null)}
-                className="p-1.5 rounded-full bg-zinc-50 text-zinc-450 hover:text-zinc-655 hover:bg-zinc-100 transition-colors"
+                className="p-1.5 rounded-full bg-zinc-50 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
               >
                 <X size={14} />
               </button>
@@ -174,7 +174,7 @@ export function UserDrawer() {
                     const isListening = !!incomingStreams[selectedUser.user_id];
                     
                     return (
-                      <div className="bg-zinc-50 border border-zinc-150 rounded-2xl p-4 space-y-3.5">
+                      <div className="bg-zinc-50 border border-zinc-100 rounded-2xl p-4 space-y-3.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500 flex items-center gap-1">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -276,7 +276,7 @@ export function UserDrawer() {
                         setSelectedUser(null);
                         router.push("/chat");
                       }}
-                      className="w-full py-3.5 rounded-2xl bg-purple-650 hover:bg-purple-700 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer shadow-sm"
+                      className="w-full py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer shadow-sm"
                     >
                       Open Chat 💬
                     </button>
@@ -327,8 +327,8 @@ export function UserDrawer() {
                   }}
                   className={`flex-1 py-3.5 rounded-2xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] ${
                     confirmBlock
-                      ? "border-rose-650 bg-rose-650 text-white hover:bg-rose-700"
-                      : "border-rose-200 hover:bg-rose-50 text-rose-650"
+                      ? "border-rose-600 bg-rose-600 text-white hover:bg-rose-700"
+                      : "border-rose-200 hover:bg-rose-50 text-rose-600"
                   }`}
                 >
                   {confirmBlock ? "Confirm Block?" : "Block / Report"}

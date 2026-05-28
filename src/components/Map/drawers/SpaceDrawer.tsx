@@ -66,14 +66,14 @@ export function SpaceDrawer() {
 
                 <button
                   onClick={() => setShowSpaceDrawer(false)}
-                  className="p-1.5 rounded-full bg-zinc-50 text-zinc-450 hover:text-zinc-655 hover:bg-zinc-100 transition-colors"
+                  className="p-1.5 rounded-full bg-zinc-50 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
                 >
                   <X size={14} />
                 </button>
               </div>
 
               {/* Space Information Cards */}
-              <div className="bg-zinc-50 border border-zinc-150 rounded-2xl p-4 space-y-4 shadow-sm">
+              <div className="bg-zinc-50 border border-zinc-100 rounded-2xl p-4 space-y-4 shadow-sm">
                 
                 {/* Speaker Requests list */}
                 <div className="space-y-1.5">
@@ -81,7 +81,7 @@ export function SpaceDrawer() {
                     Speaker Requests ({speakRequests.length})
                   </h4>
                   {speakRequests.length === 0 ? (
-                    <p className="text-[11px] text-zinc-450 italic">No pending speak requests.</p>
+                    <p className="text-[11px] text-zinc-500 italic">No pending speak requests.</p>
                   ) : (
                     <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                       {speakRequests.map((req) => (
@@ -103,7 +103,7 @@ export function SpaceDrawer() {
                             </button>
                             <button
                               onClick={() => declineSpeaker(req.user_id)}
-                              className="px-2 py-1 rounded-lg bg-white border border-zinc-200 text-zinc-500 text-[10px] font-bold hover:bg-zinc-55 transition-all active:scale-95 cursor-pointer"
+                              className="px-2 py-1 rounded-lg bg-white border border-zinc-200 text-zinc-500 text-[10px] font-bold hover:bg-zinc-50 transition-all active:scale-95 cursor-pointer"
                             >
                               Decline
                             </button>
@@ -145,7 +145,7 @@ export function SpaceDrawer() {
                             className={`p-1.5 rounded-lg border transition-all active:scale-95 cursor-pointer flex items-center justify-center ${
                               spk.isMuted
                                 ? "bg-rose-500 border-rose-500 text-white"
-                                : "bg-white border-zinc-200 text-zinc-650 hover:bg-zinc-50"
+                                : "bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50"
                             }`}
                             title={spk.isMuted ? "Unmute Speaker" : "Mute Speaker"}
                           >
@@ -170,7 +170,7 @@ export function SpaceDrawer() {
                     Listeners ({activeListeners?.length || 0})
                   </h4>
                   {!activeListeners || activeListeners.length === 0 ? (
-                    <p className="text-[11px] text-zinc-450 italic">No listeners yet.</p>
+                    <p className="text-[11px] text-zinc-500 italic">No listeners yet.</p>
                   ) : (
                     <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                       {activeListeners.map((lst) => (

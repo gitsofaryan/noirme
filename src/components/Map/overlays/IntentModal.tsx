@@ -175,7 +175,7 @@ export function IntentModal({ osmPlaces = [] }: { osmPlaces?: OSMPlace[] }) {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowIntentModal(false)}
-                  className="flex-1 py-3.5 rounded-xl bg-zinc-100 text-zinc-650 font-semibold text-sm hover:bg-zinc-200 transition-colors cursor-pointer"
+                  className="flex-1 py-3.5 rounded-xl bg-zinc-100 text-zinc-600 font-semibold text-sm hover:bg-zinc-200 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>

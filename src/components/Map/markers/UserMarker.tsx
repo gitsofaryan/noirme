@@ -271,7 +271,42 @@ const MemoizedUserMarkerComponent = ({
         eventHandlers={{
           click: onClick,
         }}
-      />
+      >
+        <Popup className="cloudy-popup" closeButton={false}>
+          <div className="p-4 w-48 text-center flex flex-col items-center gap-2.5 select-none font-sans">
+            <div className="relative">
+              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-zinc-900 bg-zinc-50 shadow-sm flex items-center justify-center">
+                <img
+                  src={myAvatarUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-white border border-zinc-200 rounded-full flex items-center justify-center text-xs shadow-sm">
+                {vibeEmoji}
+              </div>
+            </div>
+
+            <div className="space-y-0.5">
+              <h4 className="text-xs font-black text-zinc-900 leading-none">You (Me)</h4>
+              <p className="text-[9px] font-extrabold text-zinc-400">@{rawUser?.username || "me"}</p>
+            </div>
+
+            {rawUser?.bio && (
+              <p className="text-[10px] font-semibold text-zinc-600 leading-relaxed max-w-full line-clamp-2 px-1">
+                "{rawUser.bio}"
+              </p>
+            )}
+
+            <div className="w-full py-1.5 px-2 bg-zinc-900/5 rounded-xl border border-zinc-900/5">
+              <span className="text-[8px] font-extrabold tracking-wider uppercase text-zinc-500 leading-none flex items-center justify-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live & Syncing
+              </span>
+            </div>
+          </div>
+        </Popup>
+      </Marker>
     );
   }
 
@@ -333,8 +368,11 @@ export function UserMarker({ item }: UserMarkerProps) {
   const onClickRef = useRef<any>(null);
   onClickRef.current = () => {
     if ((item.type === "user" || item.type === "me") && item.raw) {
-      if (item.type === "me" && isBroadcastingAudio) {
-        setShowSpaceDrawer(true);
+      if (item.type === "me") {
+        if (isBroadcastingAudio) {
+          setShowSpaceDrawer(true);
+        }
+        // Let Leaflet Popup open naturally on me marker click—do not show UserDrawer
       } else {
         setSelectedUser(item.raw);
       }
