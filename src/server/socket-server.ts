@@ -531,44 +531,19 @@ async function sendSync(ws: WebSocket) {
       );
 
       if (nearbyUserIds && nearbyUserIds.length > 0) {
-        const pipeline = redisPub.multi();
-        nearbyUserIds.forEach((uid) => {
-          pipeline.exists(`noirme:user_session:${uid}`);
-        });
-        const sessionExistsResults = (await pipeline.exec()) as any[];
-
-        const validUserIds: string[] = [];
-        const expiredUserIds: string[] = [];
-
-        sessionExistsResults.forEach((resVal, idx) => {
-          const uid = nearbyUserIds[idx];
-          if (resVal === 1 || resVal === true || String(resVal) === "1") {
-            validUserIds.push(uid);
-          } else {
-            expiredUserIds.push(uid);
-          }
-        });
-
-        // Purge expired coordinates
-        if (expiredUserIds.length > 0) {
-          logEvent("redis_purge_expired_users", {
-            count: expiredUserIds.length,
+        const rawUsers = (await redisPub.hmGet(
+          "noirme:active_users",
+          nearbyUserIds,
+        )) as any[];
+        
+        const now = Date.now();
+        allUsers = rawUsers
+          .filter(Boolean)
+          .map((u: any) => JSON.parse(u))
+          .filter((user) => {
+            const isAlive = now - (user.last_seen || 0) <= 120000;
+            return isAlive;
           });
-          const purgePipeline = redisPub.multi();
-          expiredUserIds.forEach((uid) => {
-            purgePipeline.zRem("noirme:user_locations", uid);
-            purgePipeline.hDel("noirme:active_users", uid);
-          });
-          await purgePipeline.exec();
-        }
-
-        if (validUserIds.length > 0) {
-          const rawUsers = (await redisPub.hmGet(
-            "noirme:active_users",
-            validUserIds,
-          )) as any[];
-          allUsers = rawUsers.filter(Boolean).map((u: any) => JSON.parse(u));
-        }
       }
 
       // Get all active hotspots (matching broadcast state to prevent blinking)
@@ -1935,6 +1910,43 @@ async function initRedis() {
         });
       }
     });
+
+    // Background Redis Sweeper: cleans zombie coordinates & profiles once every 60s
+    setInterval(async () => {
+      try {
+        if (!useRedis || !redisPub) return;
+        const allUserIds = await redisPub.zRange("noirme:user_locations", 0, -1);
+        if (allUserIds && allUserIds.length > 0) {
+          const now = Date.now();
+          const pipeline = redisPub.multi();
+          
+          const rawUsers = await redisPub.hmGet("noirme:active_users", allUserIds);
+          
+          allUserIds.forEach((uid, idx) => {
+            const raw = rawUsers[idx];
+            let isZombie = true;
+            if (raw) {
+              try {
+                const u = JSON.parse(raw);
+                if (now - (u.last_seen || 0) <= 120000) {
+                  isZombie = false;
+                }
+              } catch (e) {}
+            }
+            
+            if (isZombie) {
+              pipeline.zRem("noirme:user_locations", uid);
+              pipeline.hDel("noirme:active_users", uid);
+              pipeline.del(`noirme:user_session:${uid}`);
+            }
+          });
+          
+          await pipeline.exec();
+        }
+      } catch (e: any) {
+        logEvent("background_redis_cleanup_failed", { error: e.message });
+      }
+    }, 60000);
   } catch (err: any) {
     logEvent("redis_init_failed", { error: err.message });
     useRedis = false;

@@ -262,53 +262,31 @@ export function useGeolocation(maskLocation: boolean = true) {
       }, 120000);
     };
 
-    const startLocationTracking = () => {
-      if (!navigator.geolocation) {
-        setStatus("denied");
-        setAccuracySource("offline");
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          if (!finished && !hasGPSRef.current) {
-            const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
-            const newLat = pos.coords.latitude + offset.latOffset;
-            const newLng = pos.coords.longitude + offset.lngOffset;
-            setLocation({ lat: newLat, lng: newLng });
-            setAccuracy(pos.coords.accuracy);
-            setAccuracySource(pos.coords.accuracy <= 200 ? "gps-high" : "gps-low");
-            setStatus("granted");
-          }
-        },
-        () => { },
-        { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
-      );
-
-      startHighAccuracyWatch();
-    };
-
-    if (typeof navigator !== "undefined" && navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: "geolocation" }).then((permStatus) => {
-        if (!finished) {
-          if (permStatus.state === "granted") {
-            startLocationTracking();
-          } else {
-            setStatus("waiting");
-          }
-
-          permStatus.onchange = () => {
-            if (permStatus.state === "granted" && !finished) {
-              startLocationTracking();
-            }
-          };
-        }
-      }).catch(() => {
-        startLocationTracking();
-      });
-    } else {
-      startLocationTracking();
+    if (!navigator.geolocation) {
+      setStatus("denied");
+      setAccuracySource("offline");
+      return;
     }
+
+    // Fast OS-level cached location for near-instant map loading
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (!finished && !hasGPSRef.current) {
+          const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
+          const newLat = pos.coords.latitude + offset.latOffset;
+          const newLng = pos.coords.longitude + offset.lngOffset;
+          setLocation({ lat: newLat, lng: newLng });
+          setAccuracy(pos.coords.accuracy);
+          setAccuracySource(pos.coords.accuracy <= 200 ? "gps-high" : "gps-low");
+          setStatus("granted");
+        }
+      },
+      () => { }, // Ignore errors, watchPosition will handle it
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
+    );
+
+    // Start active high-accuracy watch tracking immediately
+    startHighAccuracyWatch();
 
     // Listen to user map interactions to wake up from stasis instantly
     const handleUserWakeup = () => {

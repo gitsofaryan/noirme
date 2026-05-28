@@ -249,25 +249,8 @@ function LiveMapContent() {
     return list;
   }, [filteredUsers, filteredHotspots, location?.lat, location?.lng, zoom, bounds]);
 
-  if (!location) {
-    return (
-      <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-50 z-[9999] p-6 text-center select-none">
-        <motion.div
-          animate={{ scale: [1, 1.1, 1] }}
-          transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-          className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center border-4 border-zinc-100 mb-6"
-        >
-          <Compass className="w-8 h-8 text-black animate-[spin_3s_linear_infinite]" />
-        </motion.div>
-        <h2 className="text-lg font-black text-zinc-900 tracking-tight text-center px-6">
-          Calibrating Radar & GPS...
-        </h2>
-        <p className="text-xs font-semibold text-zinc-500 mt-3 text-center max-w-xs px-6 leading-relaxed">
-          Please keep your device location / GPS turned on, and click "Allow" if the browser requests location access.
-        </p>
-      </div>
-    );
-  }
+  const MAP_FALLBACK = { lat: 28.6139, lng: 77.209 }; // New Delhi fallback
+  const activeLocation = location || MAP_FALLBACK;
 
   return (
     <div className="absolute inset-0">
@@ -292,7 +275,7 @@ function LiveMapContent() {
         )}
       </AnimatePresence>
       <MapContainer
-        center={[location.lat, location.lng]}
+        center={[activeLocation.lat, activeLocation.lng]}
         zoom={15}
         style={{ height: "100%", width: "100%" }}
         zoomControl={false}
@@ -300,8 +283,8 @@ function LiveMapContent() {
       >
         <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png" />
         <MapController
-          lat={location.lat}
-          lng={location.lng}
+          lat={activeLocation.lat}
+          lng={activeLocation.lng}
           trigger={recenterTrigger}
           followUser={followUser}
           setFollowUser={setFollowUser}
