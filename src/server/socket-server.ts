@@ -86,6 +86,8 @@ interface Hotspot {
   host_gender?: string;
   host_age?: number;
   hotspotRange?: number;
+  osm_place_id?: number;
+  osm_place_name?: string;
 }
 
 interface DirectMessage {
@@ -139,6 +141,8 @@ const CreateHotspotSchema = z.object({
   host_gender: z.string().optional().nullable(),
   host_age: z.union([z.number(), z.string(), z.literal("")]).optional().nullable(),
   hotspotRange: z.number().optional().nullable(),
+  osm_place_id: z.number().optional().nullable(),
+  osm_place_name: z.string().optional().nullable(),
 });
 
 const RequestJoinSchema = z.object({
@@ -959,6 +963,8 @@ wss.on("connection", async (ws: any) => {
             typeof data.hotspotRange === "number"
               ? data.hotspotRange
               : undefined,
+          osm_place_id: typeof data.osm_place_id === "number" ? data.osm_place_id : undefined,
+          osm_place_name: typeof data.osm_place_name === "string" ? data.osm_place_name : undefined,
         };
 
         logEvent("hotspot_created", {

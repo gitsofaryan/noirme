@@ -15,6 +15,7 @@ import { VibeFilterBar } from "./overlays/VibeFilterBar";
 import { FloatingControls } from "./overlays/FloatingControls";
 import { IntentModal } from "./overlays/IntentModal";
 import { RouteHUD } from "./overlays/RouteHUD";
+import { useState } from "react";
 
 // private MapController component to synchronize Leaflet instance states
 function MapController({
@@ -25,6 +26,7 @@ function MapController({
   setFollowUser,
   setZoom,
   setIsInteracting,
+  setBounds,
 }: {
   lat: number;
   lng: number;
@@ -33,6 +35,7 @@ function MapController({
   setFollowUser: (val: boolean) => void;
   setZoom: (val: number) => void;
   setIsInteracting: (val: boolean) => void;
+  setBounds: (bounds: any) => void;
 }) {
   const map = useMap();
 
@@ -56,12 +59,18 @@ function MapController({
 
   useEffect(() => {
     const onMoveStart = () => setIsInteracting(true);
-    const onMoveEnd = () => setIsInteracting(false);
+    const onMoveEnd = () => {
+      setIsInteracting(false);
+      setBounds(map.getBounds());
+    };
     const onDragStart = () => {
       setFollowUser(false);
       setIsInteracting(true);
     };
-    const onDragEnd = () => setIsInteracting(false);
+    const onDragEnd = () => {
+      setIsInteracting(false);
+      setBounds(map.getBounds());
+    };
 
     map.on("movestart", onMoveStart);
     map.on("moveend", onMoveEnd);
@@ -79,15 +88,20 @@ function MapController({
   useEffect(() => {
     if (followUser) {
       map.panTo([lat, lng], { animate: true, duration: 0.5 });
+      setTimeout(() => setBounds(map.getBounds()), 600);
     }
-  }, [lat, lng, followUser, map]);
+  }, [lat, lng, followUser, map, setBounds]);
 
   useEffect(() => {
     map.flyTo([lat, lng], map.getZoom(), { animate: true, duration: 0.8 });
-  }, [trigger, map, lat, lng]);
+    setTimeout(() => setBounds(map.getBounds()), 900);
+  }, [trigger, map, lat, lng, setBounds]);
 
   return null;
 }
+
+import { useOSM } from "@/hooks/useOSM";
+import { OSMMarker } from "./markers/OSMMarker";
 
 function LiveMapContent() {
   const {
@@ -105,6 +119,9 @@ function LiveMapContent() {
     activeRoute,
     connectionFailed,
   } = useMapContext();
+  
+  const [bounds, setBounds] = useState<any>(null);
+  const osmPlaces = useOSM(bounds, zoom);
 
   if (!location) {
     return (
@@ -203,8 +220,14 @@ function LiveMapContent() {
       });
     });
 
+    // Render culling: only render markers within viewport + buffer
+    if (bounds && bounds.pad) {
+      const paddedBounds = bounds.pad(0.3); // 30% padding for smooth panning
+      return list.filter(item => paddedBounds.contains([item.lat, item.lng]));
+    }
+
     return list;
-  }, [filteredUsers, filteredHotspots, location.lat, location.lng, zoom]);
+  }, [filteredUsers, filteredHotspots, location.lat, location.lng, zoom, bounds]);
 
   return (
     <div className="absolute inset-0 pb-16">
@@ -244,6 +267,7 @@ function LiveMapContent() {
           setFollowUser={setFollowUser}
           setZoom={setZoom}
           setIsInteracting={setIsInteracting}
+          setBounds={setBounds}
         />
 
         {dispersedMarkers.map((item) => {
@@ -254,6 +278,10 @@ function LiveMapContent() {
           }
           return null;
         })}
+
+        {osmPlaces.map((place) => (
+          <OSMMarker key={place.id} place={place} />
+        ))}
 
         {activeRoute && activeRoute.coordinates && (
           <>
@@ -298,7 +326,7 @@ function LiveMapContent() {
       </AnimatePresence>
 
       {/* Drawers & Modals */}
-      <IntentModal />
+      <IntentModal osmPlaces={osmPlaces} />
       <HotspotDrawer />
       <UserDrawer />
 
@@ -312,7 +340,7 @@ function LiveMapContent() {
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: -20, opacity: 0, scale: 0.9 }}
               className={`px-5 py-3 rounded-full shadow-xl text-sm font-bold flex items-center gap-2 pointer-events-auto ${
-                toast.type === "wave" ? "bg-emerald-500 text-white" : "bg-white text-zinc-900 border border-zinc-200"
+                toast.type === "wave" ? "bg-emerald-500 text-white" : toast.type === "request" ? "bg-black text-white" : "bg-white text-zinc-900 border border-zinc-200"
               }`}
             >
               {toast.message}

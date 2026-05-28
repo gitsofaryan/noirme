@@ -116,8 +116,8 @@ export function useGeolocation(maskLocation: boolean = true) {
           const newLng = ipLoc.lng + offset.lngOffset;
           if (!locationRef.current) {
             setLocation({ lat: newLat, lng: newLng });
+            setStatus("granted");
           }
-          setStatus("granted");
         }
       })
       .catch((err) => {
@@ -158,6 +158,12 @@ export function useGeolocation(maskLocation: boolean = true) {
       console.log("[noirme] Starting high-power GPS watchPosition driver.");
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
+          // Discard extremely inaccurate coordinates (e.g. > 5km) which often happen during poor signal
+          if (pos.coords.accuracy > 5000) {
+            console.log("[noirme] Discarding low-accuracy GPS signal:", pos.coords.accuracy, "meters");
+            return;
+          }
+
           finished = true;
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
@@ -273,7 +279,7 @@ export function useGeolocation(maskLocation: boolean = true) {
 
       getIPLocation()
         .then((ipLoc) => {
-          if (!finished && ipLoc) {
+          if (!finished && ipLoc && !locationRef.current) {
             const offset = maskLocation ? getStableOffset(ipLoc.lat, ipLoc.lng) : { latOffset: 0, lngOffset: 0 };
             const newCoords = {
               lat: ipLoc.lat + offset.latOffset,
@@ -289,6 +295,11 @@ export function useGeolocation(maskLocation: boolean = true) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             finished = true;
+            if (pos.coords.accuracy > 5000 && locationRef.current) {
+              console.log("[noirme] Discarding low-accuracy GPS on refresh");
+              resolve(locationRef.current);
+              return;
+            }
             const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
             const newCoords = {
               lat: pos.coords.latitude + offset.latOffset,

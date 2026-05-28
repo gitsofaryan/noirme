@@ -12,7 +12,7 @@ export default function BottomNav() {
   const pathname = usePathname();
   const isLoading = useIsLoading();
   const { chatRequests, myUserId } = useMapContext();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, user } = useAuth();
 
   const pendingIncomingCount = chatRequests.filter(
     (r) => r.target_id === myUserId && r.status === "pending"
@@ -20,7 +20,7 @@ export default function BottomNav() {
 
   const navItems = [
     { name: "Live", path: "/", icon: Compass },
-    ...(isSignedIn ? [{ name: "Chat", path: "/chat", icon: MessageSquare }] : []),
+    ...(isSignedIn === true && user !== null ? [{ name: "Chat", path: "/chat", icon: MessageSquare }] : []),
     { name: "Profile", path: "/profile", icon: User },
   ];
 

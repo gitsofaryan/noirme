@@ -350,7 +350,7 @@ export function useSocket({
     });
   };
 
-  const createHotspot = (title: string, customRange: number) => {
+  const createHotspot = (title: string, customRange: number, osmPlace?: any) => {
     if (!location) return false;
     return send({
       type: "create_hotspot",
@@ -366,6 +366,8 @@ export function useSocket({
       host_gender: profile?.gender || "",
       host_age: profile?.age || undefined,
       hotspotRange: customRange,
+      osm_place_id: osmPlace?.id,
+      osm_place_name: osmPlace?.tags?.name,
     });
   };
 

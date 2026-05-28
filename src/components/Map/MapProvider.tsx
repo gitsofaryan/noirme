@@ -71,8 +71,8 @@ interface MapContextType {
   setConfirmBlock: (confirm: boolean) => void;
 
   // Notification and Toast streams
-  toasts: Array<{ id: string; message: string; type: "default" | "wave" }>;
-  addToast: (message: string, type?: "default" | "wave") => void;
+  toasts: Array<{ id: string; message: string; type: "default" | "wave" | "request" }>;
+  addToast: (message: string, type?: "default" | "wave" | "request") => void;
   notifications: Array<{ id: string; text: string; time: number; read: boolean }>;
   setNotifications: React.Dispatch<React.SetStateAction<Array<{ id: string; text: string; time: number; read: boolean }>>>;
   showNotifDropdown: boolean;
@@ -82,7 +82,7 @@ interface MapContextType {
   // Action methods
   handleWave: () => void;
   handleBlock: (userId: string) => Promise<void>;
-  postIntent: () => void;
+  postIntent: (osmPlace?: any) => void;
   requestJoin: () => void;
   respondRequest: (guestId: string, status: "accepted" | "declined") => void;
   sendMessage: (text: string) => void;
@@ -198,12 +198,12 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   }, [selectedUser]);
 
   // Notifications and Toast streams
-  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: "default" | "wave" }>>([]);
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: "default" | "wave" | "request" }>>([]);
   const [notifications, setNotifications] = useState<Array<{ id: string; text: string; time: number; read: boolean }>>([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [activeWaves, setActiveWaves] = useState<Array<{ sender_id: string; expires_at: number }>>([]);
 
-  const addToast = (message: string, type: "default" | "wave" = "default") => {
+  const addToast = (message: string, type: "default" | "wave" | "request" = "default") => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => {
       const next = [...prev, { id, message, type }];
@@ -497,7 +497,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
       setActiveUsers((prev) => prev.filter((u) => u.user_id !== msg.user_id));
     },
     onChatRequestReceived: (msg) => {
-      addToast(`💬 Chat request from @${msg.request.sender_username}!`, "default");
+      addToast(`💬 Chat request from @${msg.request.sender_username}!`, "request");
       setNotifications((prev) => [
         {
           id: Math.random().toString(36).substring(7),
@@ -598,9 +598,9 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     setSelectedUser(null);
   };
 
-  const postIntent = () => {
+  const postIntent = (osmPlace?: any) => {
     if (!intentText.trim()) return;
-    socket.createHotspot(intentText, customHotspotRange);
+    socket.createHotspot(intentText, customHotspotRange, osmPlace);
     setIntentText("");
     setShowIntentModal(false);
   };

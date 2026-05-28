@@ -2,7 +2,9 @@
 
 import { useMapContext } from "../MapProvider";
 import { motion, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
+import { X, MapPin } from "lucide-react";
+import { OSMPlace } from "@/hooks/useOSM";
+import { useState } from "react";
 
 const INTENT_SUGGESTIONS = [
   "Need a chai buddy ☕",
@@ -23,7 +25,8 @@ const INTENT_SUGGESTIONS = [
   "Cooking together 🍳",
 ];
 
-export function IntentModal() {
+export function IntentModal({ osmPlaces = [] }: { osmPlaces?: OSMPlace[] }) {
+  const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
   const {
     showIntentModal,
     setShowIntentModal,
@@ -36,7 +39,8 @@ export function IntentModal() {
   } = useMapContext();
 
   const handleCreateClick = () => {
-    postIntent();
+    const place = osmPlaces.find((p) => p.id === selectedPlaceId);
+    postIntent(place);
   };
 
   return (
@@ -107,7 +111,7 @@ export function IntentModal() {
               />
 
               {/* Hotspot Range Slider */}
-              <div className="mb-5 bg-zinc-50/50 border border-zinc-100 p-3 rounded-2xl">
+              <div className="mb-4 bg-zinc-50/50 border border-zinc-100 p-3 rounded-2xl">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs font-semibold text-zinc-700">Hotspot Proximity Range</span>
                   <span className="text-xs font-bold text-zinc-900 bg-zinc-100 px-2 py-0.5 rounded-full">
@@ -127,6 +131,45 @@ export function IntentModal() {
                   Your hotspot will only be discoverable by users physically within this radius.
                 </p>
               </div>
+
+              {/* OSM Places Picker */}
+              {osmPlaces.length > 0 && (
+                <div className="mb-5">
+                  <h4 className="text-xs font-bold text-zinc-900 mb-2 flex items-center gap-1">
+                    <MapPin size={12} /> Attach to nearby place
+                  </h4>
+                  <div className="flex flex-col gap-1.5 max-h-[140px] overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden bg-zinc-50/50 border border-zinc-100 p-2 rounded-xl">
+                    <button
+                      onClick={() => setSelectedPlaceId(null)}
+                      className={`text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                        selectedPlaceId === null
+                          ? "bg-zinc-900 text-white"
+                          : "bg-white text-zinc-600 hover:bg-zinc-100 border border-zinc-200/50"
+                      }`}
+                    >
+                      None (Use my exact location)
+                    </button>
+                    {osmPlaces.map((place) => (
+                      <button
+                        key={place.id}
+                        onClick={() => setSelectedPlaceId(place.id)}
+                        className={`text-left px-3 py-2 rounded-lg transition-colors flex flex-col gap-0.5 ${
+                          selectedPlaceId === place.id
+                            ? "bg-zinc-900 text-white"
+                            : "bg-white text-zinc-600 hover:bg-zinc-100 border border-zinc-200/50"
+                        }`}
+                      >
+                        <span className="text-xs font-bold truncate">{place.tags.name}</span>
+                        {place.tags.amenity && (
+                          <span className={`text-[9px] uppercase tracking-wider ${selectedPlaceId === place.id ? "text-zinc-300" : "text-zinc-400"}`}>
+                            {place.tags.amenity}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Buttons */}
               <div className="flex gap-3">
