@@ -19,6 +19,34 @@ export function useOSM(mapBounds: { _southWest: { lat: number; lng: number }; _n
   const cache = useRef<Map<string, OSMPlace[]>>(new Map());
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Clean up expired cache items from localStorage on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const EXPIRE_TIME = 12 * 60 * 60 * 1000; // 12 hours
+      const now = Date.now();
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("noirme_osm_cache_")) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (now - parsed.timestamp > EXPIRE_TIME) {
+              keysToRemove.push(key);
+            }
+          }
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+      if (keysToRemove.length > 0) {
+        console.log(`[noirme-osm] Evicted ${keysToRemove.length} expired OSM cache entries.`);
+      }
+    } catch (e) {
+      // Ignore local storage quota or privacy sandbox issues
+    }
+  }, []);
+
   useEffect(() => {
     // Only fetch if zoom is high enough to avoid massive queries
     if (!mapBounds || zoom < 14) {
@@ -35,10 +63,30 @@ export function useOSM(mapBounds: { _southWest: { lat: number; lng: number }; _n
     const cacheE = Math.ceil(ne.lng / roundTo) * roundTo;
 
     const cacheKey = `${cacheS},${cacheW},${cacheN},${cacheE}`;
+    const storageKey = `noirme_osm_cache_${cacheKey}`;
 
+    // 1. In-memory fast cache check
     if (cache.current.has(cacheKey)) {
       setPlaces(cache.current.get(cacheKey)!);
       return;
+    }
+
+    // 2. Persistent localStorage cache check
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const EXPIRE_TIME = 12 * 60 * 60 * 1000; // 12 hours
+          if (Date.now() - parsed.timestamp < EXPIRE_TIME) {
+            cache.current.set(cacheKey, parsed.places);
+            setPlaces(parsed.places);
+            return;
+          } else {
+            localStorage.removeItem(storageKey);
+          }
+        }
+      } catch (e) {}
     }
 
     if (abortControllerRef.current) {
@@ -68,7 +116,23 @@ export function useOSM(mapBounds: { _southWest: { lat: number; lng: number }; _n
         if (data && data.elements) {
           // Filter to places that actually have a name, as nameless generic buildings aren't useful for hotspots
           const namedPlaces = data.elements.filter((el: OSMPlace) => el.tags && el.tags.name) as OSMPlace[];
+          
+          // Cache in memory
           cache.current.set(cacheKey, namedPlaces);
+          
+          // Cache in persistent localStorage
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.setItem(
+                storageKey,
+                JSON.stringify({
+                  places: namedPlaces,
+                  timestamp: Date.now(),
+                })
+              );
+            } catch (e) {}
+          }
+          
           setPlaces(namedPlaces);
         }
       })

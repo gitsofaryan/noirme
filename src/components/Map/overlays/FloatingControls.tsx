@@ -19,6 +19,8 @@ export function FloatingControls() {
     isBroadcastingAudio,
     startBroadcast,
     stopBroadcast,
+    accuracy,
+    accuracySource,
   } = useMapContext();
 
   const handleRecenterClick = () => {
@@ -30,8 +32,9 @@ export function FloatingControls() {
 
   return (
     <>
-      {/* Nearby Count Indicator (Top Left) */}
+      {/* Nearby Count Indicator & GPS Calibration HUD Badge (Top Left) */}
       <div className="pointer-events-auto absolute top-[72px] left-4 flex flex-col gap-2 z-[410]">
+        {/* Nearby Count */}
         <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm px-2.5 py-1.5 rounded-full border border-zinc-200 shadow-sm self-start">
           <span
             className={`w-2 h-2 rounded-full shrink-0 ${
@@ -42,6 +45,59 @@ export function FloatingControls() {
             {filteredUsers.length}
           </span>
           <span className="text-[9px] font-semibold text-zinc-400 leading-none">nearby</span>
+        </div>
+
+        {/* GPS Calibration HUD Badge */}
+        <div className="flex flex-col gap-1 items-start">
+          {(() => {
+            switch (accuracySource) {
+              case "gps-high":
+                return (
+                  <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm px-2 py-1 rounded-full border border-zinc-200 shadow-sm text-zinc-800 self-start transition-all hover:bg-zinc-50 cursor-help" title={`Precise GPS Signal (Accuracy: ${accuracy ? Math.round(accuracy) : 0}m)`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="text-[9px] font-bold tracking-tight leading-none text-zinc-700">GPS: Precise</span>
+                  </div>
+                );
+              case "gps-low":
+                return (
+                  <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm px-2 py-1 rounded-full border border-zinc-200 shadow-sm text-zinc-800 self-start hover:bg-zinc-50 cursor-help animate-pulse" title={`Poor GPS signal. Precision: ${accuracy ? Math.round(accuracy) : 0}m. Trees or tall buildings can cause drift.`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 animate-ping" />
+                    <span className="text-[9px] font-bold text-amber-600 tracking-tight leading-none">GPS: Calibrating</span>
+                  </div>
+                );
+              case "ip-fallback":
+                return (
+                  <div className="flex flex-col gap-1 bg-white/95 backdrop-blur-sm p-2 rounded-xl border border-zinc-200 shadow-md max-w-[160px] self-start transition-all">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 animate-pulse" />
+                      <span className="text-[9px] font-black text-indigo-600 tracking-tight uppercase leading-none">IP Fallback</span>
+                    </div>
+                    <p className="text-[8px] font-semibold text-zinc-400 leading-tight mt-0.5">
+                      Approximate location. Calibrating GPS...
+                    </p>
+                  </div>
+                );
+              case "offline":
+                return (
+                  <div className="flex flex-col gap-1 bg-white/95 backdrop-blur-sm p-2 rounded-xl border border-rose-200 shadow-md max-w-[160px] self-start transition-all">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                      <span className="text-[9px] font-black text-rose-600 tracking-tight uppercase leading-none">GPS Offline</span>
+                    </div>
+                    <p className="text-[8px] font-semibold text-rose-500/80 leading-tight mt-0.5">
+                      Enable location access in settings.
+                    </p>
+                  </div>
+                );
+              default:
+                return (
+                  <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm px-2 py-1 rounded-full border border-zinc-200 shadow-sm text-zinc-800 self-start transition-all hover:bg-zinc-50 cursor-wait">
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 shrink-0 animate-pulse" />
+                    <span className="text-[9px] font-bold tracking-tight leading-none text-zinc-500">Acquiring GPS...</span>
+                  </div>
+                );
+            }
+          })()}
         </div>
       </div>
 

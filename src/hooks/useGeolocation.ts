@@ -85,6 +85,8 @@ export function useGeolocation(maskLocation: boolean = true) {
   const [status, setStatus] = useState<"waiting" | "granted" | "denied">("waiting");
   const [isStasis, setIsStasis] = useState(false);
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [accuracySource, setAccuracySource] = useState<"gps-high" | "gps-low" | "ip-fallback" | "offline" | "waiting">("waiting");
+  const hasGPSRef = useRef(false);
 
   // Use refs to avoid re-running effects on location updates
   const locationRef = useRef<{ lat: number; lng: number } | null>(location);
@@ -110,13 +112,14 @@ export function useGeolocation(maskLocation: boolean = true) {
     // Fast IP Geolocation fallback so map is never collapsed
     getIPLocation()
       .then((ipLoc) => {
-        if (!finished && ipLoc) {
+        if (!finished && ipLoc && !hasGPSRef.current) {
           const offset = maskLocation ? getStableOffset(ipLoc.lat, ipLoc.lng) : { latOffset: 0, lngOffset: 0 };
           const newLat = ipLoc.lat + offset.latOffset;
           const newLng = ipLoc.lng + offset.lngOffset;
           if (!locationRef.current) {
             setLocation({ lat: newLat, lng: newLng });
             setStatus("granted");
+            setAccuracySource("ip-fallback");
           }
         }
       })
@@ -126,18 +129,20 @@ export function useGeolocation(maskLocation: boolean = true) {
 
     if (!navigator.geolocation) {
       setStatus("denied");
+      setAccuracySource("offline");
       return;
     }
 
     // Fast OS-level cached location for near-instant map loading
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        if (!finished) {
+        if (!finished && !hasGPSRef.current) {
           const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
           const newLat = pos.coords.latitude + offset.latOffset;
           const newLng = pos.coords.longitude + offset.lngOffset;
           setLocation({ lat: newLat, lng: newLng });
           setAccuracy(pos.coords.accuracy);
+          setAccuracySource(pos.coords.accuracy <= 200 ? "gps-high" : "gps-low");
           setStatus("granted");
         }
       },
@@ -165,9 +170,11 @@ export function useGeolocation(maskLocation: boolean = true) {
           }
 
           finished = true;
+          hasGPSRef.current = true;
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           setAccuracy(pos.coords.accuracy);
+          setAccuracySource(pos.coords.accuracy <= 200 ? "gps-high" : "gps-low");
           const offset = maskLocation ? getStableOffset(lat, lng) : { latOffset: 0, lngOffset: 0 };
           const newLat = lat + offset.latOffset;
           const newLng = lng + offset.lngOffset;
@@ -202,6 +209,9 @@ export function useGeolocation(maskLocation: boolean = true) {
         () => {
           finished = true;
           setStatus((prev) => (prev === "granted" ? "granted" : "denied"));
+          if (status !== "granted") {
+            setAccuracySource("offline");
+          }
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
@@ -279,7 +289,7 @@ export function useGeolocation(maskLocation: boolean = true) {
 
       getIPLocation()
         .then((ipLoc) => {
-          if (!finished && ipLoc && !locationRef.current) {
+          if (!finished && ipLoc && !locationRef.current && !hasGPSRef.current) {
             const offset = maskLocation ? getStableOffset(ipLoc.lat, ipLoc.lng) : { latOffset: 0, lngOffset: 0 };
             const newCoords = {
               lat: ipLoc.lat + offset.latOffset,
@@ -287,6 +297,7 @@ export function useGeolocation(maskLocation: boolean = true) {
             };
             setLocation(newCoords);
             setStatus("granted");
+            setAccuracySource("ip-fallback");
           }
         })
         .catch((err) => console.warn("IP location error on refresh:", err));
@@ -300,12 +311,15 @@ export function useGeolocation(maskLocation: boolean = true) {
               resolve(locationRef.current);
               return;
             }
+            hasGPSRef.current = true;
             const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
             const newCoords = {
               lat: pos.coords.latitude + offset.latOffset,
               lng: pos.coords.longitude + offset.lngOffset,
             };
             setLocation(newCoords);
+            setAccuracy(pos.coords.accuracy);
+            setAccuracySource(pos.coords.accuracy <= 200 ? "gps-high" : "gps-low");
             setStatus("granted");
             resolve(newCoords);
           },
@@ -326,6 +340,7 @@ export function useGeolocation(maskLocation: boolean = true) {
     location,
     status,
     accuracy,
+    accuracySource,
     isStasis,
     refreshLocation,
   };

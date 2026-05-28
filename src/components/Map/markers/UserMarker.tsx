@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import { Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import { useMapContext } from "../MapProvider";
@@ -79,6 +79,8 @@ function createAvatarMarkerIconRaw(
           width:${size}px; height:${size}px; border-radius:50%;
           border: 2px solid #e11d48;
           animation: noirme-ripple-anim 1.5s infinite ease-out;
+          will-change: transform, opacity;
+          backface-visibility: hidden;
           z-index: -1;
         "></div>
         <div style="
@@ -87,6 +89,8 @@ function createAvatarMarkerIconRaw(
           border: 2px solid #e11d48;
           animation: noirme-ripple-anim 1.5s infinite ease-out;
           animation-delay: 0.5s;
+          will-change: transform, opacity;
+          backface-visibility: hidden;
           z-index: -1;
         "></div>
         <style>
@@ -213,24 +217,38 @@ export function SmoothMarker({
   );
 }
 
-interface UserMarkerProps {
-  item: {
-    key: string;
-    type: "me" | "user";
-    lat: number;
-    lng: number;
-    raw: any;
-  };
+interface MemoizedUserMarkerProps {
+  type: "me" | "user";
+  lat: number;
+  lng: number;
+  zoom: number;
+  myAvatarUrl: string;
+  vibeEmoji: string;
+  myUserId: string;
+  isWaving: boolean;
+  isBroadcasting: boolean;
+  rawUser?: any;
+  onClick?: () => void;
 }
 
-export function UserMarker({ item }: UserMarkerProps) {
-  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser, isBroadcastingAudio } = useMapContext();
-
-  if (item.type === "me") {
+const MemoizedUserMarkerComponent = ({
+  type,
+  lat,
+  lng,
+  zoom,
+  myAvatarUrl,
+  vibeEmoji,
+  myUserId,
+  isWaving,
+  isBroadcasting,
+  rawUser,
+  onClick,
+}: MemoizedUserMarkerProps) => {
+  if (type === "me") {
     return (
       <Marker
-        position={[item.lat, item.lng]}
-        icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, myUserId, false, isBroadcastingAudio)}
+        position={[lat, lng]}
+        icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, myUserId, false, isBroadcasting)}
         zIndexOffset={500}
       >
         <Popup className="cloudy-popup">
@@ -246,19 +264,72 @@ export function UserMarker({ item }: UserMarkerProps) {
     );
   }
 
-  const u = item.raw;
-  const av = u.avatar_url || getAvatarUrl(u.username || "user");
-  const isWaving = activeWaves.some((w) => w.sender_id === u.user_id);
+  const av = rawUser.avatar_url || getAvatarUrl(rawUser.username || "user");
 
   return (
     <SmoothMarker
-      position={[item.lat, item.lng]}
-      icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, zoom, u.user_id, isWaving, u.is_broadcasting_audio)}
+      position={[lat, lng]}
+      icon={createAvatarMarkerIcon(av, rawUser.vibeEmoji || "🙂", false, zoom, rawUser.user_id, isWaving, isBroadcasting)}
       zIndexOffset={500}
       eventHandlers={{
-        click: () => {
-          setSelectedUser(u);
-        },
+        click: onClick,
+      }}
+    />
+  );
+};
+
+const MemoizedUserMarker = memo(
+  MemoizedUserMarkerComponent,
+  (prev, next) => {
+    return (
+      prev.type === next.type &&
+      prev.lat === next.lat &&
+      prev.lng === next.lng &&
+      prev.zoom === next.zoom &&
+      prev.myAvatarUrl === next.myAvatarUrl &&
+      prev.vibeEmoji === next.vibeEmoji &&
+      prev.myUserId === next.myUserId &&
+      prev.isWaving === next.isWaving &&
+      prev.isBroadcasting === next.isBroadcasting &&
+      prev.rawUser?.user_id === next.rawUser?.user_id &&
+      prev.rawUser?.vibeEmoji === next.rawUser?.vibeEmoji &&
+      prev.rawUser?.is_broadcasting_audio === next.rawUser?.is_broadcasting_audio
+    );
+  }
+);
+
+interface UserMarkerProps {
+  item: {
+    key: string;
+    type: "me" | "user";
+    lat: number;
+    lng: number;
+    raw: any;
+  };
+}
+
+export function UserMarker({ item }: UserMarkerProps) {
+  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser, isBroadcastingAudio } = useMapContext();
+
+  const isWaving = item.type === "user" && activeWaves.some((w) => w.sender_id === item.raw?.user_id);
+  const isBroadcasting = item.type === "me" ? isBroadcastingAudio : !!item.raw?.is_broadcasting_audio;
+
+  return (
+    <MemoizedUserMarker
+      type={item.type}
+      lat={item.lat}
+      lng={item.lng}
+      zoom={zoom}
+      myAvatarUrl={myAvatarUrl}
+      vibeEmoji={vibeEmoji}
+      myUserId={myUserId}
+      isWaving={isWaving}
+      isBroadcasting={isBroadcasting}
+      rawUser={item.raw}
+      onClick={() => {
+        if (item.type === "user" && item.raw) {
+          setSelectedUser(item.raw);
+        }
       }}
     />
   );

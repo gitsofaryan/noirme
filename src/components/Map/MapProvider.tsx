@@ -30,6 +30,7 @@ interface MapContextType {
   locStatus: "waiting" | "granted" | "denied";
   isStasis: boolean;
   accuracy: number | null;
+  accuracySource: "gps-high" | "gps-low" | "ip-fallback" | "offline" | "waiting";
   refreshRadar: () => void;
 
   // Socket state
@@ -244,6 +245,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     status: locStatus,
     isStasis,
     accuracy,
+    accuracySource,
     refreshLocation,
   } = useGeolocation(maskLocation);
 
@@ -810,6 +812,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     locStatus,
     isStasis,
     accuracy,
+    accuracySource,
     refreshRadar,
 
     socketReady: socket.socketReady,
@@ -905,6 +908,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     locStatus,
     isStasis,
     accuracy,
+    accuracySource,
 
     socket.socketReady,
     socket.connectionState,
