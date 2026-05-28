@@ -24,6 +24,8 @@ export function useOSM(
   const [places, setPlaces] = useState<OSMPlace[]>([]);
   const cache = useRef<Map<string, OSMPlace[]>>(new Map());
   const abortControllerRef = useRef<AbortController | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFetchedKeyRef = useRef<string | null>(null);
 
   // Clean up expired cache items from localStorage on mount
   useEffect(() => {
@@ -45,6 +47,16 @@ export function useOSM(
         }
       }
       keysToRemove.forEach((key) => localStorage.removeItem(key));
+      // Cap at 30 entries — evict oldest first
+      const remaining: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("noirme_osm_cache_")) remaining.push(key);
+      }
+      if (remaining.length > 30) {
+        const toEvict = remaining.slice(0, remaining.length - 30);
+        toEvict.forEach((key) => localStorage.removeItem(key));
+      }
       if (keysToRemove.length > 0) {
         console.log(
           `[noirme-osm] Evicted ${keysToRemove.length} expired OSM cache entries.`,
@@ -76,6 +88,7 @@ export function useOSM(
     // 1. In-memory fast cache check
     if (cache.current.has(cacheKey)) {
       setPlaces(cache.current.get(cacheKey)!);
+      lastFetchedKeyRef.current = cacheKey;
       return;
     }
 
@@ -97,9 +110,19 @@ export function useOSM(
       } catch (e) {}
     }
 
+    // Skip if already fetching same key (deduplication)
+    if (lastFetchedKeyRef.current === cacheKey) return;
+    lastFetchedKeyRef.current = cacheKey;
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // Debounce: wait 500ms after last bounds change before fetching
+    debounceTimerRef.current = setTimeout(() => {
     abortControllerRef.current = new AbortController();
 
     // Query Overpass API for amenities, leisure, and tourism within the rounded bounding box
@@ -160,9 +183,14 @@ export function useOSM(
         }
       });
 
+    }, 500); // end debounce
+
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
+      }
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
       }
     };
   }, [mapBounds, zoom]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useRef, useMemo } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useAuth, getAvatarUrl, UserProfile } from "@/hooks/useAuth";
 import { useGeolocation, getDistanceKm } from "@/hooks/useGeolocation";
 import { useSocket } from "@/hooks/useSocket";
@@ -245,7 +245,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [activeWaves, setActiveWaves] = useState<Array<{ sender_id: string; expires_at: number }>>([]);
 
-  const addToast = (message: string, type: "default" | "wave" | "request" = "default") => {
+  const addToast = useCallback((message: string, type: "default" | "wave" | "request" = "default") => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => {
       const next = [...prev, { id, message, type }];
@@ -257,7 +257,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
-  };
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -465,10 +465,10 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [routingTarget, setRoutingTarget] = useState<{ lat: number; lng: number; name: string } | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
-  const clearActiveRoute = () => {
+  const clearActiveRoute = useCallback(() => {
     setActiveRoute(null);
     setRoutingTarget(null);
-  };
+  }, []);
 
   const lastFetchedLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
@@ -807,42 +807,44 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   }, [socket]);
 
   // Action methods
-  const handleWave = () => {
+  const handleWave = useCallback(() => {
     if (!selectedUser) return;
     setHasWaved(true);
     addToast(`You waved at ${selectedUser.username}`);
     socket.sendWave(selectedUser.user_id);
-  };
+  }, [selectedUser, addToast, socket]);
 
-  const handleBlock = async (userId: string) => {
+  const handleBlock = useCallback(async (userId: string) => {
     await blockUser(userId);
-    const newBlocks = [...localBlocks, userId];
-    setLocalBlocks(newBlocks);
-    localStorage.setItem("noirme_local_blocks", JSON.stringify(newBlocks));
+    setLocalBlocks((prev) => {
+      const newBlocks = [...prev, userId];
+      localStorage.setItem("noirme_local_blocks", JSON.stringify(newBlocks));
+      return newBlocks;
+    });
     setSelectedUser(null);
-  };
+  }, [blockUser]);
 
-  const postIntent = (osmPlace?: any) => {
+  const postIntent = useCallback((osmPlace?: any) => {
     if (!intentText.trim()) return;
     socket.createHotspot(intentText, customHotspotRange, osmPlace);
     setIntentText("");
     setShowIntentModal(false);
-  };
+  }, [intentText, customHotspotRange, socket]);
 
-  const requestJoin = (roomId?: any) => {
-    const id = typeof roomId === "string" ? roomId : selectedHotspot?.id;
+  const requestJoin = useCallback((roomId?: any) => {
+    const id = typeof roomId === "string" ? roomId : selectedHotspotRef.current?.id;
     if (!id) return;
     socket.requestJoin(id);
-  };
+  }, [socket]);
 
-  const respondRequest = (guestId: string, status: "accepted" | "declined") => {
-    if (!selectedHotspot) return;
-    socket.respondRequest(selectedHotspot.id, guestId, status);
-  };
+  const respondRequest = useCallback((guestId: string, status: "accepted" | "declined") => {
+    if (!selectedHotspotRef.current) return;
+    socket.respondRequest(selectedHotspotRef.current.id, guestId, status);
+  }, [socket]);
 
-  const sendMessage = (text: string) => {
-    if (!selectedHotspot) return;
-    socket.sendMessage(selectedHotspot.id, text, (optimisticMsg) => {
+  const sendMessage = useCallback((text: string) => {
+    if (!selectedHotspotRef.current) return;
+    socket.sendMessage(selectedHotspotRef.current.id, text, (optimisticMsg) => {
       setSelectedHotspot((prev: any) => {
         if (!prev) return null;
         return {
@@ -852,40 +854,41 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
       });
       addToast("Offline: Message queued.", "default");
     });
-  };
+  }, [socket, addToast]);
 
-  const leaveHotspot = () => {
-    if (!selectedHotspot) return;
-    socket.leaveHotspot(selectedHotspot.id);
+  const leaveHotspot = useCallback(() => {
+    if (!selectedHotspotRef.current) return;
+    socket.leaveHotspot(selectedHotspotRef.current.id);
     setSelectedHotspot(null);
-  };
+  }, [socket]);
 
   // Deprecated - history loaded directly in main effect from localStorage
 
-  const sendChatRequest = (targetUserId: string) => {
+  const sendChatRequest = useCallback((targetUserId: string) => {
     socket.sendChatRequest(targetUserId);
-  };
+  }, [socket]);
 
-  const respondChatRequest = (senderId: string, status: "accepted" | "rejected") => {
+  const respondChatRequest = useCallback((senderId: string, status: "accepted" | "rejected") => {
     socket.respondChatRequest(senderId, status);
-  };
+  }, [socket]);
 
-  const sendDirectMessage = (text: string) => {
-    if (!activeChatUser || !myUserId || myUserId === "anon") return;
+  const sendDirectMessage = useCallback((text: string) => {
+    const chatUser = activeChatUserRef.current;
+    if (!chatUser || !myUserId || myUserId === "anon") return;
 
     const optimisticMsg: DirectMessage = {
       id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       sender_id: myUserId,
       sender_username: handle || myUserId,
       sender_avatar: myAvatarUrl,
-      recipient_id: activeChatUser.user_id,
+      recipient_id: chatUser.user_id,
       text,
       timestamp: Date.now(),
     };
 
     setChatMessages((prev) => {
       const next = [...prev, optimisticMsg];
-      const convoId = [myUserId, activeChatUser.user_id].sort().join(":");
+      const convoId = [myUserId, chatUser.user_id].sort().join(":");
       if (typeof window !== "undefined") {
         try {
           const oneHourAgo = Date.now() - 60 * 60 * 1000;
@@ -898,25 +901,26 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
-    socket.sendDirectMessage(activeChatUser.user_id, text);
-  };
+    socket.sendDirectMessage(chatUser.user_id, text);
+  }, [myUserId, handle, myAvatarUrl, socket]);
 
-  const sendTypingState = (isTyping: boolean) => {
-    if (!activeChatUser) return;
-    socket.sendTypingState(activeChatUser.user_id, isTyping);
-  };
+  const sendTypingState = useCallback((isTyping: boolean) => {
+    const chatUser = activeChatUserRef.current;
+    if (!chatUser) return;
+    socket.sendTypingState(chatUser.user_id, isTyping);
+  }, [socket]);
 
-  const requestDMHistory = (targetUserId: string) => {
+  const requestDMHistory = useCallback((targetUserId: string) => {
     socket.requestDMHistory(targetUserId);
-  };
+  }, [socket]);
 
-  const refreshRadar = () => {
+  const refreshRadar = useCallback(() => {
     setFollowUser(true);
     setRecenterTrigger((t) => t + 1);
     refreshLocation().then(() => {
       socket.requestSync();
     });
-  };
+  }, [refreshLocation, socket]);
 
 
 

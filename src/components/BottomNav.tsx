@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { memo } from "react";
 import { Compass, User, MessageSquare } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useMapContext, useSocialContext, useDMContext } from "@/components/Map/MapProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsLoading } from "@/hooks/useLoading";
 
-export default function BottomNav() {
+function BottomNavInner() {
   const pathname = usePathname();
   const isLoading = useIsLoading();
   const { myUserId, isInteracting, selectedUser, selectedHotspot, filteredHotspots } = useMapContext();
@@ -114,3 +115,5 @@ export default function BottomNav() {
     </AnimatePresence>
   );
 }
+
+export default memo(BottomNavInner);

@@ -269,6 +269,7 @@ const IncomingMessageSchema = z.discriminatedUnion("type", [
 const clientsLocal = new Map<WebSocket, ClientInfo>();
 const hotspotsLocal = new Map<string, Hotspot>();
 const lastBroadcastTime = new Map<string, number>(); // userId -> timestamp for throttle
+const lastSyncTime = new Map<WebSocket, number>(); // ws -> timestamp for sync throttle
 const rateLimits = new Map<WebSocket, { count: number; resetAt: number }>();
 
 // Chat state (local fallback)
@@ -514,11 +515,10 @@ async function sendSync(ws: WebSocket) {
 
   if (useRedis && redisPub) {
     try {
-      // Refresh user active session TTL in Redis using socketId to prevent overwrite race conditions
       await redisPub.set(
         `noirme:user_session:${clientInfo.user_id}`,
         (ws as any).socketId || "default",
-        { EX: 900 },
+        { EX: 120 },
       );
 
       const maxRange = Math.max(10, Math.min(30, clientInfo.radarRange || 15));
@@ -933,7 +933,7 @@ wss.on("connection", async (ws: any) => {
           });
 
           await redisPub.set(`noirme:user_session:${info.user_id}`, ws.socketId || "default", {
-            EX: 900,
+            EX: 120,
           });
 
           const nowBroadcast = Date.now();
@@ -958,7 +958,13 @@ wss.on("connection", async (ws: any) => {
           }
         }
 
-        await sendSync(ws);
+        // Throttled sync: max 1 full sync per 3 seconds per client to prevent Redis hammering
+        const nowSync = Date.now();
+        const lastSync = lastSyncTime.get(ws) || 0;
+        if (nowSync - lastSync >= 3000) {
+          lastSyncTime.set(ws, nowSync);
+          await sendSync(ws);
+        }
       } else if (data.type === "create_hotspot") {
         const roomId = `room_${Math.random().toString(36).substring(2, 8)}`;
         const hostId = data.user_id;
@@ -1731,6 +1737,7 @@ wss.on("connection", async (ws: any) => {
 
   ws.on("close", async () => {
     rateLimits.delete(ws);
+    lastSyncTime.delete(ws);
     const info = clientsLocal.get(ws);
     if (info) {
       logEvent("client_disconnected_scheduled", {

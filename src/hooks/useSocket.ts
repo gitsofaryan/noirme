@@ -141,29 +141,54 @@ export function useSocket({
     };
   });
 
-  const sendLocationUpdate = () => {
+  // Track whether profile data has changed since last full send
+  const profileDirtyRef = useRef(true); // Start dirty to force full initial send
+  const lastSentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  const sendLocationUpdate = (forceFull = false) => {
     const ws = socketRef.current;
     const vals = latestValuesRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !vals.location) return;
-    ws.send(
-      JSON.stringify({
-        type: "location_update",
-        user_id: vals.userId,
-        username: vals.handle,
-        vibeEmoji: vals.vibeEmoji,
-        avatar_url: vals.avatarUrl,
-        lat: vals.location.lat,
-        lng: vals.location.lng,
-        bio: vals.profile?.bio || "",
-        selectedTags: vals.profile?.selectedTags || [],
-        gender: vals.profile?.gender || "",
-        age: vals.profile?.age || "",
-        blockedUsers: [...(vals.profile?.blockedUsers || []), ...vals.localBlocks],
-        radarRange: vals.profile?.radarRange || 15,
-        hotspotRange: vals.profile?.hotspotRange || 15,
-        is_broadcasting_audio: !!vals.isBroadcastingAudio,
-      })
-    );
+
+    // Send full payload only when profile data is dirty or forced
+    if (profileDirtyRef.current || forceFull) {
+      profileDirtyRef.current = false;
+      lastSentLocationRef.current = { lat: vals.location.lat, lng: vals.location.lng };
+      ws.send(
+        JSON.stringify({
+          type: "location_update",
+          user_id: vals.userId,
+          username: vals.handle,
+          vibeEmoji: vals.vibeEmoji,
+          avatar_url: vals.avatarUrl,
+          lat: vals.location.lat,
+          lng: vals.location.lng,
+          bio: vals.profile?.bio || "",
+          selectedTags: vals.profile?.selectedTags || [],
+          gender: vals.profile?.gender || "",
+          age: vals.profile?.age || "",
+          blockedUsers: [...(vals.profile?.blockedUsers || []), ...vals.localBlocks],
+          radarRange: vals.profile?.radarRange || 15,
+          hotspotRange: vals.profile?.hotspotRange || 15,
+          is_broadcasting_audio: !!vals.isBroadcastingAudio,
+        })
+      );
+    } else {
+      // Lightweight ping — just location coordinates
+      lastSentLocationRef.current = { lat: vals.location.lat, lng: vals.location.lng };
+      ws.send(
+        JSON.stringify({
+          type: "location_update",
+          user_id: vals.userId,
+          username: vals.handle,
+          avatar_url: vals.avatarUrl,
+          vibeEmoji: vals.vibeEmoji,
+          lat: vals.location.lat,
+          lng: vals.location.lng,
+          is_broadcasting_audio: !!vals.isBroadcastingAudio,
+        })
+      );
+    }
   };
 
   // Send a helper to set offline messages
@@ -356,13 +381,20 @@ export function useSocket({
     return () => clearInterval(interval);
   }, [socketReady]);
 
-  // Location and profile sync
+  // Location-only sync (lightweight)
   useEffect(() => {
     sendLocationUpdate();
   }, [
     location?.lat,
     location?.lng,
     socketReady,
+  ]);
+
+  // Profile data changes mark dirty and trigger full send
+  useEffect(() => {
+    profileDirtyRef.current = true;
+    sendLocationUpdate(true);
+  }, [
     handle,
     vibeEmoji,
     avatarUrl,

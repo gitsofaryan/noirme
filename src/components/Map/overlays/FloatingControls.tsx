@@ -1,11 +1,12 @@
 "use client";
 
+import { memo } from "react";
 import { useMapContext } from "../MapProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
 import { Compass, Send, Bell, Mic, MicOff, Radio } from "lucide-react";
 
-export function FloatingControls() {
+function FloatingControlsInner() {
   const { isSignedIn } = useAuth();
   const {
     filteredUsers,
@@ -194,3 +195,5 @@ export function FloatingControls() {
     </>
   );
 }
+
+export const FloatingControls = memo(FloatingControlsInner);

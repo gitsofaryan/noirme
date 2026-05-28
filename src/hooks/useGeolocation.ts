@@ -37,31 +37,59 @@ export function getStableOffset(actualLat: number, actualLng: number) {
 }
 
 async function getIPLocation(): Promise<{ lat: number; lng: number } | null> {
+  // Check sessionStorage cache first (10-min TTL)
+  if (typeof window !== "undefined") {
+    try {
+      const cached = sessionStorage.getItem("noirme_ip_location");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.expires > Date.now() && typeof parsed.lat === "number") {
+          return { lat: parsed.lat, lng: parsed.lng };
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  let result: { lat: number; lng: number } | null = null;
+
   try {
     const res = await fetch("https://freeipapi.com/api/json");
     if (res.ok) {
       const data = await res.json();
       if (typeof data.latitude === "number" && typeof data.longitude === "number") {
-        return { lat: data.latitude, lng: data.longitude };
+        result = { lat: data.latitude, lng: data.longitude };
       }
     }
   } catch (err) {
     // Try backup
   }
 
-  try {
-    const res = await fetch("https://ipwho.is/");
-    if (res.ok) {
-      const data = await res.json();
-      if (typeof data.latitude === "number" && typeof data.longitude === "number") {
-        return { lat: data.latitude, lng: data.longitude };
+  if (!result) {
+    try {
+      const res = await fetch("https://ipwho.is/");
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.latitude === "number" && typeof data.longitude === "number") {
+          result = { lat: data.latitude, lng: data.longitude };
+        }
       }
+    } catch (err) {
+      // Silent fallback
     }
-  } catch (err) {
-    // Silent fallback
   }
 
-  return null;
+  // Cache in sessionStorage for 10 minutes
+  if (result && typeof window !== "undefined") {
+    try {
+      sessionStorage.setItem("noirme_ip_location", JSON.stringify({
+        lat: result.lat,
+        lng: result.lng,
+        expires: Date.now() + 10 * 60 * 1000,
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  return result;
 }
 
 export function useGeolocation(maskLocation: boolean = true) {
@@ -87,6 +115,7 @@ export function useGeolocation(maskLocation: boolean = true) {
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [accuracySource, setAccuracySource] = useState<"gps-high" | "gps-low" | "ip-fallback" | "offline" | "waiting">("waiting");
   const hasGPSRef = useRef(false);
+  const wakeFromStasisRef = useRef<(() => void) | null>(null);
 
   // Use refs to avoid re-running effects on location updates
   const locationRef = useRef<{ lat: number; lng: number } | null>(location);
@@ -269,6 +298,9 @@ export function useGeolocation(maskLocation: boolean = true) {
       }
     };
 
+    // Expose wake-up for refreshLocation
+    wakeFromStasisRef.current = handleUserWakeup;
+
     window.addEventListener("click", handleUserWakeup);
     window.addEventListener("touchstart", handleUserWakeup);
 
@@ -287,6 +319,11 @@ export function useGeolocation(maskLocation: boolean = true) {
   }, [maskLocation]);
 
   const refreshLocation = () => {
+    // Wake from stasis if currently in low-power mode
+    if (wakeFromStasisRef.current) {
+      wakeFromStasisRef.current();
+    }
+
     return new Promise<{ lat: number; lng: number } | null>((resolve, reject) => {
       let finished = false;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, memo, useCallback } from "react";
+import { useEffect, useRef, memo, useCallback } from "react";
 import { Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import { useMapContext, useSocialContext } from "../MapProvider";
@@ -137,15 +137,22 @@ function createAvatarMarkerIcon(
   isWaving: boolean = false,
   isBroadcasting: boolean = false
 ) {
-  const key = `${userId}_${avatarUrl}_${vibeEmoji}_${isMe ? "me" : "them"}_${zoom}_${isWaving ? "waving" : "static"}_${isBroadcasting ? "mic" : "nomic"}`;
+  // Round zoom to nearest integer to reduce cache key proliferation during smooth zoom
+  const roundedZoom = Math.round(zoom);
+  const key = `${userId}_${avatarUrl}_${vibeEmoji}_${isMe ? "me" : "them"}_${roundedZoom}_${isWaving ? "waving" : "static"}_${isBroadcasting ? "mic" : "nomic"}`;
   if (avatarIconCache.has(key)) {
-    return avatarIconCache.get(key)!;
+    // LRU: move to end by re-inserting
+    const icon = avatarIconCache.get(key)!;
+    avatarIconCache.delete(key);
+    avatarIconCache.set(key, icon);
+    return icon;
   }
-  if (avatarIconCache.size >= 800) {
-    const keysToDelete = Array.from(avatarIconCache.keys()).slice(0, 200);
+  if (avatarIconCache.size >= 600) {
+    // Evict oldest 150 entries (LRU)
+    const keysToDelete = Array.from(avatarIconCache.keys()).slice(0, 150);
     keysToDelete.forEach((k) => avatarIconCache.delete(k));
   }
-  const icon = createAvatarMarkerIconRaw(avatarUrl, vibeEmoji, isMe, zoom, userId, isWaving, isBroadcasting);
+  const icon = createAvatarMarkerIconRaw(avatarUrl, vibeEmoji, isMe, roundedZoom, userId, isWaving, isBroadcasting);
   avatarIconCache.set(key, icon);
   return icon;
 }
@@ -163,15 +170,16 @@ export function SmoothMarker({
   children?: React.ReactNode;
   zIndexOffset?: number;
 }) {
-  const [currentPos, setCurrentPos] = useState<[number, number]>(position);
+  const markerRef = useRef<any>(null);
   const targetPosRef = useRef<[number, number]>(position);
+  const currentPosRef = useRef<[number, number]>(position);
   const startPosRef = useRef<[number, number]>(position);
   const startTimeRef = useRef<number>(0);
   const animIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (position[0] !== targetPosRef.current[0] || position[1] !== targetPosRef.current[1]) {
-      startPosRef.current = currentPos;
+      startPosRef.current = currentPosRef.current;
       targetPosRef.current = position;
       startTimeRef.current = performance.now();
 
@@ -181,14 +189,19 @@ export function SmoothMarker({
 
       const animate = (now: number) => {
         const elapsed = now - startTimeRef.current;
-        const duration = 400; // 400ms transition time
+        const duration = 400;
         const t = Math.min(1, elapsed / duration);
-        const ease = t * (2 - t); // ease-out quadratic
+        const ease = t * (2 - t);
 
         const nextLat = startPosRef.current[0] + (targetPosRef.current[0] - startPosRef.current[0]) * ease;
         const nextLng = startPosRef.current[1] + (targetPosRef.current[1] - startPosRef.current[1]) * ease;
 
-        setCurrentPos([nextLat, nextLng]);
+        currentPosRef.current = [nextLat, nextLng];
+
+        // Imperatively update the Leaflet marker — zero React re-renders
+        if (markerRef.current) {
+          markerRef.current.setLatLng([nextLat, nextLng]);
+        }
 
         if (t < 1) {
           animIdRef.current = requestAnimationFrame(animate);
@@ -201,7 +214,6 @@ export function SmoothMarker({
     }
   }, [position]);
 
-  // Clean up animation frame on unmount
   useEffect(() => {
     return () => {
       if (animIdRef.current) {
@@ -211,7 +223,13 @@ export function SmoothMarker({
   }, []);
 
   return (
-    <Marker position={currentPos} icon={icon} eventHandlers={eventHandlers} zIndexOffset={zIndexOffset}>
+    <Marker
+      ref={markerRef}
+      position={position}
+      icon={icon}
+      eventHandlers={eventHandlers}
+      zIndexOffset={zIndexOffset}
+    >
       {children}
     </Marker>
   );

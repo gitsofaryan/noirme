@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, useMap, Polyline } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { AnimatePresence, motion } from "framer-motion";
@@ -16,7 +16,6 @@ import { VibeFilterBar } from "./overlays/VibeFilterBar";
 import { FloatingControls } from "./overlays/FloatingControls";
 import { IntentModal } from "./overlays/IntentModal";
 import { RouteHUD } from "./overlays/RouteHUD";
-import { useState } from "react";
 
 // private MapController component to synchronize Leaflet instance states
 function MapController({
@@ -129,7 +128,14 @@ function LiveMapContent() {
     setSelectedUser,
   } = useMapContext();
   
-  const [bounds, setBounds] = useState<any>(null);
+  const [bounds, setBoundsRaw] = useState<any>(null);
+  const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setBounds = useCallback((newBounds: any) => {
+    if (boundsTimerRef.current) clearTimeout(boundsTimerRef.current);
+    boundsTimerRef.current = setTimeout(() => {
+      setBoundsRaw(newBounds);
+    }, 150);
+  }, []);
   const osmPlaces = useOSM(bounds, zoom);
 
   // Calculate dispersion of markers to prevent overlapping
