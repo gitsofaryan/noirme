@@ -1,6 +1,6 @@
 "use client";
 
-import { useMapContext } from "@/components/Map/MapProvider";
+import { useSocialContext, useDMContext } from "@/components/Map/MapProvider";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import ChatPage from "../page";
@@ -12,7 +12,8 @@ import ChatPage from "../page";
 export default function ChatByUsernamePage() {
     const router = useRouter();
     const params = useParams();
-    const { friends, setActiveChatUser } = useMapContext();
+    const { friends } = useSocialContext();
+    const { setActiveChatUser } = useDMContext();
 
     // Safely extract username from params, defaulting to empty string
     const username = useMemo(() => {

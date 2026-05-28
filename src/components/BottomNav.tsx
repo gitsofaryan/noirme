@@ -4,14 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Compass, User, MessageSquare } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useMapContext } from "@/components/Map/MapProvider";
+import { useMapContext, useSocialContext, useDMContext } from "@/components/Map/MapProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsLoading } from "@/hooks/useLoading";
 
 export default function BottomNav() {
   const pathname = usePathname();
   const isLoading = useIsLoading();
-  const { chatRequests, myUserId, isInteracting, activeChatUser, selectedUser, selectedHotspot, unreadMessagesCount, filteredHotspots } = useMapContext();
+  const { myUserId, isInteracting, selectedUser, selectedHotspot, filteredHotspots } = useMapContext();
+  const { chatRequests } = useSocialContext();
+  const { activeChatUser, unreadMessagesCount } = useDMContext();
   const { isSignedIn, user } = useAuth();
 
   const pendingIncomingCount = chatRequests.filter(

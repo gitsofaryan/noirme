@@ -1,6 +1,6 @@
 "use client";
 
-import { useMapContext } from "../MapProvider";
+import { useMapContext, useSocialContext, useDMContext } from "../MapProvider";
 import { getAvatarUrl, useAuth } from "@/hooks/useAuth";
 import { getDistanceKm } from "@/hooks/useGeolocation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,14 +20,14 @@ export function UserDrawer() {
     handleWave,
     handleBlock,
     setRoutingTarget,
-    chatRequests,
     myUserId,
-    sendChatRequest,
-    setActiveChatUser,
     startListening,
     stopListening,
     incomingStreams,
   } = useMapContext();
+
+  const { chatRequests, sendChatRequest } = useSocialContext();
+  const { setActiveChatUser } = useDMContext();
 
   const requestSent = selectedUser
     ? chatRequests.find((r: any) => r.sender_id === myUserId && r.target_id === selectedUser.user_id)

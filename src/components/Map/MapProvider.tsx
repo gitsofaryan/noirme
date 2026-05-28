@@ -105,21 +105,6 @@ interface MapContextType {
   isLoadingRoute: boolean;
   clearActiveRoute: () => void;
 
-  // Chat/DM state
-  chatRequests: any[];
-  friends: any[];
-  chatMessages: DirectMessage[];
-  peerTyping: Record<string, boolean>;
-  activeChatUser: any | null;
-  setActiveChatUser: (u: any | null) => void;
-  sendChatRequest: (targetUserId: string) => void;
-  respondChatRequest: (senderId: string, status: "accepted" | "rejected") => void;
-  sendDirectMessage: (text: string) => void;
-  sendTypingState: (isTyping: boolean) => void;
-  requestDMHistory: (targetUserId: string) => void;
-  isLoadingHistory: boolean;
-  unreadMessagesCount: number;
-
   // WebRTC Live Audio
   isBroadcastingAudio: boolean;
   startBroadcast: () => void;
@@ -131,7 +116,28 @@ interface MapContextType {
   setIsSpeakerMuted: (muted: boolean) => void;
 }
 
+interface SocialContextType {
+  chatRequests: any[];
+  friends: any[];
+  sendChatRequest: (targetUserId: string) => void;
+  respondChatRequest: (senderId: string, status: "accepted" | "rejected") => void;
+}
+
+interface DMContextType {
+  chatMessages: DirectMessage[];
+  peerTyping: Record<string, boolean>;
+  activeChatUser: any | null;
+  setActiveChatUser: (u: any | null) => void;
+  sendDirectMessage: (text: string) => void;
+  sendTypingState: (isTyping: boolean) => void;
+  requestDMHistory: (targetUserId: string) => void;
+  isLoadingHistory: boolean;
+  unreadMessagesCount: number;
+}
+
 const MapContext = createContext<MapContextType | undefined>(undefined);
+const SocialContext = createContext<SocialContextType | undefined>(undefined);
+const DMContext = createContext<DMContextType | undefined>(undefined);
 
 export function MapProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, user, profile, blockUser } = useAuth();
@@ -696,13 +702,22 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
       if (activeChatUserRef.current && (msg.message.sender_id === activeChatUserRef.current.user_id || msg.message.recipient_id === activeChatUserRef.current.user_id)) {
         setChatMessages((prev) => {
           if (prev.some((m) => m.id === msg.message.id)) return prev;
-          const newMsgs = [...prev, msg.message];
+          
+          // Filter out matching local optimistic message from local UI state
+          let filtered = prev;
+          if (msg.message.sender_id === myUserId) {
+            filtered = prev.filter(
+              (m) => !m.id.startsWith("local_") || m.text !== msg.message.text
+            );
+          }
+          
+          const newMsgs = [...filtered, msg.message];
           const convoId = [myUserId, activeChatUserRef.current.user_id].sort().join(":");
           if (typeof window !== "undefined") {
             try {
               const oneHourAgo = Date.now() - 60 * 60 * 1000;
-              const filtered = newMsgs.filter((m) => m.timestamp > oneHourAgo);
-              localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filtered));
+              const filteredStorage = newMsgs.filter((m) => m.timestamp > oneHourAgo);
+              localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filteredStorage));
             } catch (e) {
               console.warn("[noirme] Failed to save chat to localStorage");
             }
@@ -937,7 +952,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     });
   }, [intents, profile?.blockedUsers, localBlocks, location, radarRadius, selectedFilter]);
 
-  const contextValue = useMemo(() => ({
+  const mapValue = useMemo(() => ({
     myUserId,
     handle,
     vibeEmoji,
@@ -1000,20 +1015,6 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     sendMessage,
     leaveHotspot,
 
-    chatRequests,
-    friends,
-    chatMessages,
-    peerTyping,
-    activeChatUser,
-    setActiveChatUser,
-    sendChatRequest,
-    respondChatRequest,
-    sendDirectMessage,
-    sendTypingState,
-    requestDMHistory,
-    isLoadingHistory,
-    unreadMessagesCount,
-
     isBroadcastingAudio: webRTC.isBroadcastingAudio,
     startBroadcast: webRTC.startBroadcast,
     stopBroadcast: webRTC.stopBroadcast,
@@ -1074,14 +1075,6 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     showNotifDropdown,
     activeWaves,
 
-    chatRequests,
-    friends,
-    chatMessages,
-    peerTyping,
-    activeChatUser,
-    isLoadingHistory,
-    unreadMessagesCount,
-
     webRTC.isBroadcastingAudio,
     webRTC.incomingStreams,
     isSpeakerMuted,
@@ -1096,9 +1089,32 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     isLoadingRoute,
   ]);
 
+  const socialValue = useMemo(() => ({
+    chatRequests,
+    friends,
+    sendChatRequest,
+    respondChatRequest,
+  }), [chatRequests, friends]);
+
+  const dmValue = useMemo(() => ({
+    chatMessages,
+    peerTyping,
+    activeChatUser,
+    setActiveChatUser,
+    sendDirectMessage,
+    sendTypingState,
+    requestDMHistory,
+    isLoadingHistory,
+    unreadMessagesCount,
+  }), [chatMessages, peerTyping, activeChatUser, isLoadingHistory, unreadMessagesCount]);
+
   return (
-    <MapContext.Provider value={contextValue}>
-      {children}
+    <MapContext.Provider value={mapValue}>
+      <SocialContext.Provider value={socialValue}>
+        <DMContext.Provider value={dmValue}>
+          {children}
+        </DMContext.Provider>
+      </SocialContext.Provider>
     </MapContext.Provider>
   );
 }
@@ -1107,6 +1123,22 @@ export function useMapContext() {
   const context = useContext(MapContext);
   if (!context) {
     throw new Error("useMapContext must be used within a MapProvider");
+  }
+  return context;
+}
+
+export function useSocialContext() {
+  const context = useContext(SocialContext);
+  if (!context) {
+    throw new Error("useSocialContext must be used within a MapProvider");
+  }
+  return context;
+}
+
+export function useDMContext() {
+  const context = useContext(DMContext);
+  if (!context) {
+    throw new Error("useDMContext must be used within a MapProvider");
   }
   return context;
 }

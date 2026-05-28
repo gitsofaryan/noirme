@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# app route artifacts
+/src/app/**/dist/
+
 # production
 /build
 

@@ -514,11 +514,11 @@ async function sendSync(ws: WebSocket) {
 
   if (useRedis && redisPub) {
     try {
-      // Refresh user active session TTL in Redis
+      // Refresh user active session TTL in Redis using socketId to prevent overwrite race conditions
       await redisPub.set(
         `noirme:user_session:${clientInfo.user_id}`,
-        "active",
-        { EX: 120 },
+        (ws as any).socketId || "default",
+        { EX: 900 },
       );
 
       const maxRange = Math.max(10, Math.min(30, clientInfo.radarRange || 15));
@@ -571,55 +571,38 @@ async function sendSync(ws: WebSocket) {
         }
       }
 
-      // Geo-spatial query for hotspots
-      const nearbyHotspotIds = await redisPub.geoSearch(
-        "noirme:hotspot_locations",
-        { latitude: clientInfo.lat, longitude: clientInfo.lng },
-        { radius: maxRange, unit: "km" },
-      );
+      // Get all active hotspots (matching broadcast state to prevent blinking)
+      const allHotspotsRaw = await redisPub.hGetAll("noirme:hotspots");
+      const validHotspots: Hotspot[] = [];
+      const expiredHotspotIds: string[] = [];
 
-      if (nearbyHotspotIds && nearbyHotspotIds.length > 0) {
-        const rawHotspots = (await redisPub.hmGet(
-          "noirme:hotspots",
-          nearbyHotspotIds,
-        )) as any[];
-
-        const validHotspots: Hotspot[] = [];
-        const expiredHotspotIds: string[] = [];
-
-        rawHotspots.forEach((raw, idx) => {
-          const rid = nearbyHotspotIds[idx];
-          if (!raw) {
-            expiredHotspotIds.push(rid);
-            return;
-          }
-          try {
-            const h: Hotspot = JSON.parse(raw);
-            if (h.expires_at > Date.now()) {
-              validHotspots.push(h);
-            } else {
-              expiredHotspotIds.push(rid);
-            }
-          } catch {
+      for (const [rid, raw] of Object.entries(allHotspotsRaw)) {
+        try {
+          const h: Hotspot = JSON.parse(raw);
+          if (h.expires_at > Date.now()) {
+            validHotspots.push(h);
+          } else {
             expiredHotspotIds.push(rid);
           }
-        });
-
-        // Purge expired hotspots
-        if (expiredHotspotIds.length > 0) {
-          logEvent("redis_purge_expired_hotspots", {
-            count: expiredHotspotIds.length,
-          });
-          const purgePipeline = redisPub.multi();
-          expiredHotspotIds.forEach((rid) => {
-            purgePipeline.zRem("noirme:hotspot_locations", rid);
-            purgePipeline.hDel("noirme:hotspots", rid);
-          });
-          await purgePipeline.exec();
+        } catch {
+          expiredHotspotIds.push(rid);
         }
-
-        allHotspots = validHotspots;
       }
+
+      // Purge expired hotspots
+      if (expiredHotspotIds.length > 0) {
+        logEvent("redis_purge_expired_hotspots", {
+          count: expiredHotspotIds.length,
+        });
+        const purgePipeline = redisPub.multi();
+        expiredHotspotIds.forEach((rid) => {
+          purgePipeline.zRem("noirme:hotspot_locations", rid);
+          purgePipeline.hDel("noirme:hotspots", rid);
+        });
+        await purgePipeline.exec();
+      }
+
+      allHotspots = validHotspots;
     } catch (e: any) {
       logEvent("redis_geo_sync_failed", { error: e.message });
     }
@@ -647,7 +630,7 @@ async function sendSync(ws: WebSocket) {
     return distance <= maxRange;
   });
 
-  // Filter hotspots: omit blocked hosts and scopes
+  // Filter hotspots: omit blocked hosts, letting client handle location/distance filters to prevent blinking
   const activeHotspots = allHotspots.filter((h) => {
     if (h.expires_at <= Date.now()) return false;
 
@@ -659,20 +642,7 @@ async function sendSync(ws: WebSocket) {
       clientInfo.user_id,
     );
     if (iBlockedHost || hostBlockedMe) return false;
-
-    // Host always sees their own hotspot; guests must be within viewer + host ranges
-    const isHost = clientInfo.user_id === h.host_id;
-    if (isHost) return true;
-
-    const distance = getDistanceKm(
-      clientInfo.lat,
-      clientInfo.lng,
-      h.lat,
-      h.lng,
-    );
-    const viewerRange = Math.max(10, Math.min(30, clientInfo.radarRange || 15));
-    const hostRange = Math.max(10, Math.min(30, h.hotspotRange || 15));
-    return distance <= viewerRange && distance <= hostRange;
+    return true;
   });
 
   ws.send(
@@ -727,7 +697,8 @@ function broadcastLocationUpdate(data: ClientInfo, senderWs?: WebSocket) {
 
 // ── Connection Handler ───────────────────────────────────────────────────────
 wss.on("connection", async (ws: any) => {
-  logEvent("client_connected", { connected_clients: wss.clients.size });
+  ws.socketId = Math.random().toString(36).substring(2, 10);
+  logEvent("client_connected", { connected_clients: wss.clients.size, socket_id: ws.socketId });
   ws.isAlive = true;
   ws.on("pong", () => {
     ws.isAlive = true;
@@ -961,8 +932,8 @@ wss.on("connection", async (ws: any) => {
             member: info.user_id,
           });
 
-          await redisPub.set(`noirme:user_session:${info.user_id}`, "active", {
-            EX: 120,
+          await redisPub.set(`noirme:user_session:${info.user_id}`, ws.socketId || "default", {
+            EX: 900,
           });
 
           const nowBroadcast = Date.now();
@@ -1762,34 +1733,75 @@ wss.on("connection", async (ws: any) => {
     rateLimits.delete(ws);
     const info = clientsLocal.get(ws);
     if (info) {
-      logEvent("client_disconnected", {
+      logEvent("client_disconnected_scheduled", {
         user_id: info.user_id,
         username: info.username,
+        socket_id: ws.socketId,
       });
       clientsLocal.delete(ws);
       lastBroadcastTime.delete(info.user_id);
 
-      if (useRedis && redisPub) {
-        try {
-          await redisPub.hDel("noirme:active_users", info.user_id);
-          await redisPub.zRem("noirme:user_locations", info.user_id);
-          await redisPub.del(`noirme:user_session:${info.user_id}`);
-          await redisPub.publish(
-            "noirme:location_updates",
-            JSON.stringify({
+      // Schedule session cleanup after a grace period of 15 seconds.
+      // This prevents blinking off-and-on when reloading the page or recovering from brief network drops.
+      setTimeout(async () => {
+        // Only clean up session if no other active local sockets for this user ID remain open.
+        let hasOtherLocal = false;
+        for (const [otherWs, otherInfo] of clientsLocal.entries()) {
+          if (otherInfo.user_id === info.user_id && otherWs.readyState === WebSocket.OPEN) {
+            hasOtherLocal = true;
+            break;
+          }
+        }
+
+        if (useRedis && redisPub) {
+          try {
+            const activeSocketId = await redisPub.get(`noirme:user_session:${info.user_id}`);
+            // Delete session from Redis only if this socket is the one currently stored in Redis (no newer reconnection overtook it)
+            // and no other local socket is active.
+            if (!hasOtherLocal && (!activeSocketId || activeSocketId === ws.socketId)) {
+              await redisPub.hDel("noirme:active_users", info.user_id);
+              await redisPub.zRem("noirme:user_locations", info.user_id);
+              await redisPub.del(`noirme:user_session:${info.user_id}`);
+              await redisPub.publish(
+                "noirme:location_updates",
+                JSON.stringify({
+                  type: "user_disconnected",
+                  user_id: info.user_id,
+                }),
+              );
+              logEvent("client_session_deleted", {
+                user_id: info.user_id,
+                socket_id: ws.socketId,
+              });
+            } else {
+              logEvent("client_session_retained", {
+                user_id: info.user_id,
+                socket_id: ws.socketId,
+                active_socket_id: activeSocketId,
+                has_other_local: hasOtherLocal,
+              });
+            }
+          } catch (e: any) {
+            logEvent("redis_cleanup_exception", { error: e.message });
+          }
+        } else {
+          if (!hasOtherLocal) {
+            broadcastLocal({
               type: "user_disconnected",
               user_id: info.user_id,
-            }),
-          );
-        } catch (e: any) {
-          logEvent("redis_cleanup_exception", { error: e.message });
+            });
+            logEvent("local_client_session_deleted", {
+              user_id: info.user_id,
+              socket_id: ws.socketId,
+            });
+          } else {
+            logEvent("local_client_session_retained", {
+              user_id: info.user_id,
+              socket_id: ws.socketId,
+            });
+          }
         }
-      } else {
-        broadcastLocal({
-          type: "user_disconnected",
-          user_id: info.user_id,
-        });
-      }
+      }, 15000); // 15 seconds grace period
     }
   });
 });

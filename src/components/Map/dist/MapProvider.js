@@ -55,7 +55,7 @@ var __spreadArrays = (this && this.__spreadArrays) || function () {
     return r;
 };
 exports.__esModule = true;
-exports.useMapContext = exports.MapProvider = void 0;
+exports.useDMContext = exports.useSocialContext = exports.useMapContext = exports.MapProvider = void 0;
 var react_1 = require("react");
 var useAuth_1 = require("@/hooks/useAuth");
 var useGeolocation_1 = require("@/hooks/useGeolocation");
@@ -63,6 +63,8 @@ var useSocket_1 = require("@/hooks/useSocket");
 var useWebRTC_1 = require("@/hooks/useWebRTC");
 var routing_1 = require("@/lib/routing");
 var MapContext = react_1.createContext(undefined);
+var SocialContext = react_1.createContext(undefined);
+var DMContext = react_1.createContext(undefined);
 function MapProvider(_a) {
     var _this = this;
     var _b;
@@ -815,7 +817,7 @@ function MapProvider(_a) {
             return !isBlocked && isWithinRange && isNotExpired && isMatchesFilter;
         });
     }, [intents, profile === null || profile === void 0 ? void 0 : profile.blockedUsers, localBlocks, location, radarRadius, selectedFilter]);
-    var contextValue = react_1.useMemo(function () { return ({
+    var mapValue = react_1.useMemo(function () { return ({
         myUserId: myUserId,
         handle: handle,
         vibeEmoji: vibeEmoji,
@@ -868,19 +870,6 @@ function MapProvider(_a) {
         respondRequest: respondRequest,
         sendMessage: sendMessage,
         leaveHotspot: leaveHotspot,
-        chatRequests: chatRequests,
-        friends: friends,
-        chatMessages: chatMessages,
-        peerTyping: peerTyping,
-        activeChatUser: activeChatUser,
-        setActiveChatUser: setActiveChatUser,
-        sendChatRequest: sendChatRequest,
-        respondChatRequest: respondChatRequest,
-        sendDirectMessage: sendDirectMessage,
-        sendTypingState: sendTypingState,
-        requestDMHistory: requestDMHistory,
-        isLoadingHistory: isLoadingHistory,
-        unreadMessagesCount: unreadMessagesCount,
         isBroadcastingAudio: webRTC.isBroadcastingAudio,
         startBroadcast: webRTC.startBroadcast,
         stopBroadcast: webRTC.stopBroadcast,
@@ -930,13 +919,6 @@ function MapProvider(_a) {
         notifications,
         showNotifDropdown,
         activeWaves,
-        chatRequests,
-        friends,
-        chatMessages,
-        peerTyping,
-        activeChatUser,
-        isLoadingHistory,
-        unreadMessagesCount,
         webRTC.isBroadcastingAudio,
         webRTC.incomingStreams,
         isSpeakerMuted,
@@ -948,7 +930,26 @@ function MapProvider(_a) {
         routingTarget,
         isLoadingRoute,
     ]);
-    return (React.createElement(MapContext.Provider, { value: contextValue }, children));
+    var socialValue = react_1.useMemo(function () { return ({
+        chatRequests: chatRequests,
+        friends: friends,
+        sendChatRequest: sendChatRequest,
+        respondChatRequest: respondChatRequest
+    }); }, [chatRequests, friends]);
+    var dmValue = react_1.useMemo(function () { return ({
+        chatMessages: chatMessages,
+        peerTyping: peerTyping,
+        activeChatUser: activeChatUser,
+        setActiveChatUser: setActiveChatUser,
+        sendDirectMessage: sendDirectMessage,
+        sendTypingState: sendTypingState,
+        requestDMHistory: requestDMHistory,
+        isLoadingHistory: isLoadingHistory,
+        unreadMessagesCount: unreadMessagesCount
+    }); }, [chatMessages, peerTyping, activeChatUser, isLoadingHistory, unreadMessagesCount]);
+    return (React.createElement(MapContext.Provider, { value: mapValue },
+        React.createElement(SocialContext.Provider, { value: socialValue },
+            React.createElement(DMContext.Provider, { value: dmValue }, children))));
 }
 exports.MapProvider = MapProvider;
 function useMapContext() {
@@ -959,3 +960,19 @@ function useMapContext() {
     return context;
 }
 exports.useMapContext = useMapContext;
+function useSocialContext() {
+    var context = react_1.useContext(SocialContext);
+    if (!context) {
+        throw new Error("useSocialContext must be used within a MapProvider");
+    }
+    return context;
+}
+exports.useSocialContext = useSocialContext;
+function useDMContext() {
+    var context = react_1.useContext(DMContext);
+    if (!context) {
+        throw new Error("useDMContext must be used within a MapProvider");
+    }
+    return context;
+}
+exports.useDMContext = useDMContext;

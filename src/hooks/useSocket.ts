@@ -117,6 +117,54 @@ export function useSocket({
     };
   });
 
+  const latestValuesRef = useRef({
+    userId,
+    handle,
+    vibeEmoji,
+    avatarUrl,
+    location,
+    profile,
+    localBlocks,
+    isBroadcastingAudio,
+  });
+
+  useEffect(() => {
+    latestValuesRef.current = {
+      userId,
+      handle,
+      vibeEmoji,
+      avatarUrl,
+      location,
+      profile,
+      localBlocks,
+      isBroadcastingAudio,
+    };
+  });
+
+  const sendLocationUpdate = () => {
+    const ws = socketRef.current;
+    const vals = latestValuesRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !vals.location) return;
+    ws.send(
+      JSON.stringify({
+        type: "location_update",
+        user_id: vals.userId,
+        username: vals.handle,
+        vibeEmoji: vals.vibeEmoji,
+        avatar_url: vals.avatarUrl,
+        lat: vals.location.lat,
+        lng: vals.location.lng,
+        bio: vals.profile?.bio || "",
+        selectedTags: vals.profile?.selectedTags || [],
+        gender: vals.profile?.gender || "",
+        age: vals.profile?.age || "",
+        blockedUsers: [...(vals.profile?.blockedUsers || []), ...vals.localBlocks],
+        radarRange: vals.profile?.radarRange || 15,
+        hotspotRange: vals.profile?.hotspotRange || 15,
+        is_broadcasting_audio: !!vals.isBroadcastingAudio,
+      })
+    );
+  };
 
   // Send a helper to set offline messages
   const setOfflineMessages = (msgs: any[]) => {
@@ -169,7 +217,7 @@ export function useSocket({
 
         const activeWs = ws;
         if (activeWs) {
-          activeWs.send(JSON.stringify({ type: "request_sync", user_id: userId }));
+          sendLocationUpdate();
           activeWs.send(JSON.stringify({ type: "request_chats", user_id: userId }));
 
           // Flush offline messages
@@ -299,41 +347,18 @@ export function useSocket({
     };
   }, [!!location, userId]);
 
-  // Periodic full sync to discover stationary users
+  // Periodic location heartbeat and sync to keep session alive and handle server recycles
   useEffect(() => {
     if (!socketReady) return;
     const interval = setInterval(() => {
-      const ws = socketRef.current;
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "request_sync" }));
-      }
+      sendLocationUpdate();
     }, 30000);
     return () => clearInterval(interval);
   }, [socketReady]);
 
   // Location and profile sync
   useEffect(() => {
-    const ws = socketRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN || !location) return;
-    ws.send(
-      JSON.stringify({
-        type: "location_update",
-        user_id: userId,
-        username: handle,
-        vibeEmoji: vibeEmoji,
-        avatar_url: avatarUrl,
-        lat: location.lat,
-        lng: location.lng,
-        bio: profile?.bio || "",
-        selectedTags: profile?.selectedTags || [],
-        gender: profile?.gender || "",
-        age: profile?.age || "",
-        blockedUsers: [...(profile?.blockedUsers || []), ...localBlocks],
-        radarRange: profile?.radarRange || 15,
-        hotspotRange: profile?.hotspotRange || 15,
-        is_broadcasting_audio: !!isBroadcastingAudio,
-      })
-    );
+    sendLocationUpdate();
   }, [
     location?.lat,
     location?.lng,

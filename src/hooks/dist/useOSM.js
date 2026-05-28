@@ -81,7 +81,7 @@ function useOSM(mapBounds, zoom) {
         abortControllerRef.current = new AbortController();
         // Query Overpass API for amenities, leisure, and tourism within the rounded bounding box
         var query = "\n      [out:json][timeout:5];\n      (\n        node[\"amenity\"](" + cacheS + "," + cacheW + "," + cacheN + "," + cacheE + ");\n        node[\"leisure\"](" + cacheS + "," + cacheW + "," + cacheN + "," + cacheE + ");\n        node[\"tourism\"](" + cacheS + "," + cacheW + "," + cacheN + "," + cacheE + ");\n      );\n      out body;\n    ";
-        var url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
+        var url = "/api/osm?s=" + cacheS + "&w=" + cacheW + "&n=" + cacheN + "&e=" + cacheE;
         fetch(url, { signal: abortControllerRef.current.signal })
             .then(function (res) {
             if (!res.ok)

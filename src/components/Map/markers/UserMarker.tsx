@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, memo } from "react";
 import { Marker, Popup } from "react-leaflet";
 import L from "leaflet";
-import { useMapContext } from "../MapProvider";
+import { useMapContext, useSocialContext } from "../MapProvider";
 import { getAvatarUrl } from "@/hooks/useAuth";
 
 const MARKER_COLORS = [
@@ -309,7 +309,8 @@ interface UserMarkerProps {
 }
 
 export function UserMarker({ item }: UserMarkerProps) {
-  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser, isBroadcastingAudio, friends } = useMapContext();
+  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser, isBroadcastingAudio } = useMapContext();
+  const { friends } = useSocialContext();
 
   const isWaving = item.type === "user" && activeWaves.some((w) => w.sender_id === item.raw?.user_id);
   const isFriend = item.type === "user" && friends.some((f) => f.user_id === item.raw?.user_id);

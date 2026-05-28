@@ -1,9 +1,9 @@
 "use client";
 
-import { useMapContext } from "@/components/Map/MapProvider";
+import { useMapContext, useSocialContext, useDMContext } from "@/components/Map/MapProvider";
 import { useAuth, getAvatarUrl } from "@/hooks/useAuth";
 import { getDistanceKm } from "@/hooks/useGeolocation";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   MessageSquare,
   ArrowLeft,
@@ -22,24 +22,14 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export default function ChatPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { isSignedIn, signIn } = useAuth();
 
   const {
     myUserId,
-    chatRequests,
-    friends,
-    chatMessages,
-    peerTyping,
-    activeChatUser,
-    setActiveChatUser,
-    sendChatRequest,
-    respondChatRequest,
-    sendDirectMessage,
-    sendTypingState,
     setRoutingTarget,
     setFollowUser,
     addToast,
-    isLoadingHistory,
     activeUsers,
     filteredHotspots,
     location,
@@ -48,11 +38,35 @@ export default function ChatPage() {
     requestJoin
   } = useMapContext();
 
+  const {
+    chatRequests,
+    friends,
+    sendChatRequest,
+    respondChatRequest,
+  } = useSocialContext();
+
+  const {
+    chatMessages,
+    peerTyping,
+    activeChatUser,
+    setActiveChatUser,
+    sendDirectMessage,
+    sendTypingState,
+    isLoadingHistory,
+  } = useDMContext();
+
   const [activeTab, setActiveTab] = useState<"chats" | "hotspots" | "requests">("chats");
   const [typedMessage, setTypedMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
+
+  // Sync activeChatUser state when path changes (fixes browser and UI back buttons)
+  useEffect(() => {
+    if (pathname === "/chat") {
+      setActiveChatUser(null);
+    }
+  }, [pathname, setActiveChatUser]);
 
   // Auto scroll messages
   useEffect(() => {

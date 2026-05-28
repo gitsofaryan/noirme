@@ -113,7 +113,7 @@ export function useOSM(
       out body;
     `;
 
-    const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+    const url = `/api/osm?s=${cacheS}&w=${cacheW}&n=${cacheN}&e=${cacheE}`;
 
     fetch(url, { signal: abortControllerRef.current.signal })
       .then((res) => {
