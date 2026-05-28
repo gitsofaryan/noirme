@@ -46,9 +46,10 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="h-full bg-white text-zinc-900 selection:bg-zinc-200 overflow-hidden">
-        <Script src="https://js.puter.com/v2/" strategy="beforeInteractive" />
+      <body className="h-full bg-white text-zinc-900 selection:bg-zinc-200 overflow-hidden" suppressHydrationWarning>
+        <Script src="https://js.puter.com/v2/" strategy="afterInteractive" />
         <Script id="register-sw" strategy="afterInteractive">
           {`
             if ('serviceWorker' in navigator) {
