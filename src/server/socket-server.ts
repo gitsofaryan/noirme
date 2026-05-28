@@ -431,6 +431,10 @@ async function sendSync(ws: WebSocket) {
     const hostBlockedMe = (hostInfo?.blockedUsers || []).includes(clientInfo.user_id);
     if (iBlockedHost || hostBlockedMe) return false;
 
+    // Host always sees their own hotspot; guests must be within viewer + host ranges
+    const isHost = clientInfo.user_id === h.host_id;
+    if (isHost) return true;
+
     const distance = getDistanceKm(clientInfo.lat, clientInfo.lng, h.lat, h.lng);
     const viewerRange = Math.max(10, Math.min(30, clientInfo.radarRange || 15));
     const hostRange = Math.max(10, Math.min(30, h.hotspotRange || 15));
