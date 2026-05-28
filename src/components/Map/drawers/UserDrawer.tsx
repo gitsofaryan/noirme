@@ -1,14 +1,15 @@
 "use client";
 
 import { useMapContext } from "../MapProvider";
-import { getAvatarUrl } from "@/hooks/useAuth";
+import { getAvatarUrl, useAuth } from "@/hooks/useAuth";
 import { getDistanceKm } from "@/hooks/useGeolocation";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Navigation } from "lucide-react";
+import { X, MapPin, Navigation, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export function UserDrawer() {
   const router = useRouter();
+  const { isSignedIn } = useAuth();
   const {
     location,
     selectedUser,
@@ -23,6 +24,12 @@ export function UserDrawer() {
     myUserId,
     sendChatRequest,
     setActiveChatUser,
+    startListening,
+    stopListening,
+    incomingStreams,
+    isBroadcastingAudio,
+    startBroadcast,
+    stopBroadcast,
   } = useMapContext();
 
   const requestSent = selectedUser
@@ -148,6 +155,74 @@ export function UserDrawer() {
               >
                 <Navigation size={13} /> Get Directions
               </button>
+
+              {/* Live Audio Controls (Speak & Listen) */}
+              {isSignedIn && (
+                <div className="bg-zinc-50/80 rounded-2xl p-3.5 border border-zinc-100 space-y-2">
+                  <p className="text-[9px] font-bold tracking-widest uppercase text-zinc-400">
+                    Live Audio Connection
+                  </p>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {/* Listen Button */}
+                    {selectedUser.is_broadcasting_audio ? (
+                      <button
+                        onClick={() => {
+                          if (incomingStreams[selectedUser.user_id]) {
+                            stopListening(selectedUser.user_id);
+                          } else {
+                            startListening(selectedUser.user_id);
+                          }
+                        }}
+                        className={`py-3 px-2 rounded-xl text-[11px] font-bold border transition-all flex items-center justify-center gap-1 active:scale-[0.98] cursor-pointer shadow-sm ${
+                          incomingStreams[selectedUser.user_id]
+                            ? "bg-zinc-900 border-zinc-900 text-white"
+                            : "bg-white border-zinc-200 text-zinc-800 hover:bg-zinc-50"
+                        }`}
+                      >
+                        {incomingStreams[selectedUser.user_id] ? (
+                          <>
+                            <Volume2 size={13} className="animate-pulse" /> Listening 🎧
+                          </>
+                        ) : (
+                          <>
+                            <VolumeX size={13} /> Listen Live 🎧
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <div className="py-3 px-2 rounded-xl text-[11px] font-semibold border border-zinc-200/60 text-zinc-400 bg-zinc-100/50 flex items-center justify-center gap-1 select-none">
+                        Not Live
+                      </div>
+                    )}
+
+                    {/* Speak Button */}
+                    <button
+                      onClick={() => {
+                        if (isBroadcastingAudio) {
+                          stopBroadcast();
+                        } else {
+                          startBroadcast();
+                        }
+                      }}
+                      className={`py-3 px-2 rounded-xl text-[11px] font-bold border transition-all flex items-center justify-center gap-1 active:scale-[0.98] cursor-pointer shadow-sm ${
+                        isBroadcastingAudio
+                          ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"
+                          : "bg-white border-zinc-200 text-zinc-800 hover:bg-zinc-50"
+                      }`}
+                    >
+                      {isBroadcastingAudio ? (
+                        <>
+                          <Mic size={13} className="text-rose-600 animate-pulse" /> Speaking 🎙️
+                        </>
+                      ) : (
+                        <>
+                          <MicOff size={13} /> Speak Live 🎙️
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Connect / Chat Button */}
               {(() => {

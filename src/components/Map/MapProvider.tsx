@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, useRef, useMemo } from 
 import { useAuth, getAvatarUrl, UserProfile } from "@/hooks/useAuth";
 import { useGeolocation, getDistanceKm } from "@/hooks/useGeolocation";
 import { useSocket } from "@/hooks/useSocket";
+import { useWebRTC } from "@/hooks/useWebRTC";
 import { fetchOSRMRoute, RouteData, TransportMode } from "@/lib/routing";
 
 export interface DirectMessage {
@@ -116,6 +117,16 @@ interface MapContextType {
   sendTypingState: (isTyping: boolean) => void;
   requestDMHistory: (targetUserId: string) => void;
   isLoadingHistory: boolean;
+
+  // WebRTC Live Audio
+  isBroadcastingAudio: boolean;
+  startBroadcast: () => void;
+  stopBroadcast: () => void;
+  startListening: (targetUserId: string) => void;
+  stopListening: (targetUserId: string) => void;
+  incomingStreams: Record<string, MediaStream>;
+  isSpeakerMuted: boolean;
+  setIsSpeakerMuted: (muted: boolean) => void;
 }
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
@@ -163,6 +174,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [followUser, setFollowUser] = useState(true);
   const [isInteracting, setIsInteracting] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [isSpeakerMuted, setIsSpeakerMuted] = useState(false);
 
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [selectedHotspot, _setSelectedHotspot] = useState<any | null>(null);
@@ -381,6 +393,16 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeUsers]);
 
+  // Socket methods Ref to pass to WebRTC without circular dependency
+  const socketMethodsRef = useRef<any>(null);
+
+  const webRTC = useWebRTC({
+    myUserId,
+    sendRtcOffer: (target, offer) => socketMethodsRef.current?.sendRtcOffer(target, offer),
+    sendRtcAnswer: (target, answer) => socketMethodsRef.current?.sendRtcAnswer(target, answer),
+    sendRtcIceCandidate: (target, cand) => socketMethodsRef.current?.sendRtcIceCandidate(target, cand),
+  });
+
   // Socket
   const socket = useSocket({
     userId: myUserId,
@@ -390,6 +412,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     location,
     profile,
     localBlocks,
+    isBroadcastingAudio: webRTC.isBroadcastingAudio,
     onSync: (msg) => {
       const userMap = new Map<string, any>();
       for (const u of msg.users) {
@@ -401,13 +424,28 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     onLocationUpdate: (msg) => {
       if (msg.data.user_id !== myUserId) {
         setActiveUsers((prev) => {
+          const existingUser = prev.find((u) => u.user_id === msg.data.user_id);
           const filtered = prev.filter((u) => u.user_id !== msg.data.user_id);
-          if (!prev.some((u) => u.user_id === msg.data.user_id)) {
+          
+          if (!existingUser) {
             setNotifications((prevNotifs) =>
               [
                 {
                   id: Math.random().toString(36).substring(7),
                   text: `@${msg.data.username} is now nearby`,
+                  time: Date.now(),
+                  read: false,
+                },
+                ...prevNotifs,
+              ].slice(0, 5)
+            );
+          } else if (!existingUser.is_broadcasting_audio && msg.data.is_broadcasting_audio) {
+            addToast(`🎙️ @${msg.data.username} is speaking nearby!`, "default");
+            setNotifications((prevNotifs) =>
+              [
+                {
+                  id: Math.random().toString(36).substring(7),
+                  text: `🎙️ @${msg.data.username} started an audio broadcast`,
                   time: Date.now(),
                   read: false,
                 },
@@ -580,7 +618,14 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     onChatsList: (msg) => {
       setChatRequests(msg.requests || []);
     },
+    onRtcOffer: webRTC.handleRtcOffer,
+    onRtcAnswer: webRTC.handleRtcAnswer,
+    onRtcIceCandidate: webRTC.handleRtcIceCandidate,
   });
+
+  useEffect(() => {
+    socketMethodsRef.current = socket;
+  }, [socket]);
 
   // Action methods
   const handleWave = () => {
@@ -829,6 +874,15 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     requestDMHistory,
     isLoadingHistory,
 
+    isBroadcastingAudio: webRTC.isBroadcastingAudio,
+    startBroadcast: webRTC.startBroadcast,
+    stopBroadcast: webRTC.stopBroadcast,
+    startListening: webRTC.startListening,
+    stopListening: webRTC.stopListening,
+    incomingStreams: webRTC.incomingStreams,
+    isSpeakerMuted,
+    setIsSpeakerMuted,
+
     filteredUsers,
     filteredHotspots,
     activeUsers,
@@ -885,6 +939,10 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     peerTyping,
     activeChatUser,
     isLoadingHistory,
+
+    webRTC.isBroadcastingAudio,
+    webRTC.incomingStreams,
+    isSpeakerMuted,
 
     filteredUsers,
     filteredHotspots,

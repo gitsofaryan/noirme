@@ -50,6 +50,7 @@ interface ClientInfo {
   blockedUsers?: string[];
   radarRange?: number;
   hotspotRange?: number;
+  is_broadcasting_audio?: boolean;
 }
 
 interface Message {
@@ -125,6 +126,7 @@ const LocationUpdateSchema = z.object({
   blockedUsers: z.array(z.string()).optional().nullable(),
   radarRange: z.number().optional().nullable(),
   hotspotRange: z.number().optional().nullable(),
+  is_broadcasting_audio: z.boolean().optional().nullable(),
 });
 
 const CreateHotspotSchema = z.object({
@@ -214,6 +216,28 @@ const RequestDMHistorySchema = z.object({
   target_user_id: z.string(),
 });
 
+// ── WebRTC Signaling Schemas ──
+const RTCOfferSchema = z.object({
+  type: z.literal("rtc_offer"),
+  target_user_id: z.string(),
+  sender_id: z.string(),
+  offer: z.any(),
+});
+
+const RTCAnswerSchema = z.object({
+  type: z.literal("rtc_answer"),
+  target_user_id: z.string(),
+  sender_id: z.string(),
+  answer: z.any(),
+});
+
+const RTCICECandidateSchema = z.object({
+  type: z.literal("rtc_ice_candidate"),
+  target_user_id: z.string(),
+  sender_id: z.string(),
+  candidate: z.any(),
+});
+
 const IncomingMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("request_sync") }),
   LocationUpdateSchema,
@@ -229,6 +253,9 @@ const IncomingMessageSchema = z.discriminatedUnion("type", [
   DirectMessageTypingSchema,
   RequestChatsSchema,
   RequestDMHistorySchema,
+  RTCOfferSchema,
+  RTCAnswerSchema,
+  RTCICECandidateSchema,
 ]);
 
 // ── In-Memory Fallback State (used if Redis is inactive/not configured) ──────
@@ -796,6 +823,7 @@ wss.on("connection", async (ws: any) => {
             typeof data.hotspotRange === "number"
               ? data.hotspotRange
               : undefined,
+          is_broadcasting_audio: data.is_broadcasting_audio || false,
         };
 
         clientsLocal.set(ws, info);
@@ -1627,6 +1655,26 @@ wss.on("connection", async (ws: any) => {
             messages,
           })
         );
+      } else if (
+        data.type === "rtc_offer" ||
+        data.type === "rtc_answer" ||
+        data.type === "rtc_ice_candidate"
+      ) {
+        const { target_user_id } = data;
+        if (useRedis && redisPub) {
+          await redisPub.publish(
+            "noirme:direct_notifications",
+            JSON.stringify({
+              target_user_id,
+              payload: data,
+            })
+          );
+        } else {
+          const targetSocket = findLocalSocketByUserId(target_user_id);
+          if (targetSocket) {
+            targetSocket.send(JSON.stringify(data));
+          }
+        }
       }
     } catch (e: any) {
       logEvent("message_handle_exception", {

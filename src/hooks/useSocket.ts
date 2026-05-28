@@ -10,6 +10,7 @@ interface UseSocketProps {
   location: { lat: number; lng: number } | null;
   profile: any;
   localBlocks: string[];
+  isBroadcastingAudio?: boolean;
   onSync: (data: any) => void;
   onLocationUpdate: (data: any) => void;
   onHotspotsList: (data: any) => void;
@@ -26,6 +27,9 @@ interface UseSocketProps {
   onDMHistory?: (data: any) => void;
   onTypingIndicator?: (data: any) => void;
   onChatsList?: (data: any) => void;
+  onRtcOffer?: (data: any) => void;
+  onRtcAnswer?: (data: any) => void;
+  onRtcIceCandidate?: (data: any) => void;
 }
 
 export function useSocket({
@@ -36,6 +40,7 @@ export function useSocket({
   location,
   profile,
   localBlocks,
+  isBroadcastingAudio,
   onSync,
   onLocationUpdate,
   onHotspotsList,
@@ -52,6 +57,9 @@ export function useSocket({
   onDMHistory,
   onTypingIndicator,
   onChatsList,
+  onRtcOffer,
+  onRtcAnswer,
+  onRtcIceCandidate,
 }: UseSocketProps) {
   const [socketReady, setSocketReady] = useState(false);
   const [connectionState, setConnectionState] = useState<
@@ -80,6 +88,9 @@ export function useSocket({
     onDMHistory,
     onTypingIndicator,
     onChatsList,
+    onRtcOffer,
+    onRtcAnswer,
+    onRtcIceCandidate,
   });
 
   useEffect(() => {
@@ -100,6 +111,9 @@ export function useSocket({
       onDMHistory,
       onTypingIndicator,
       onChatsList,
+      onRtcOffer,
+      onRtcAnswer,
+      onRtcIceCandidate,
     };
   });
 
@@ -232,6 +246,15 @@ export function useSocket({
             case "chats_list":
               callbacksRef.current.onChatsList?.(msg);
               break;
+            case "rtc_offer":
+              callbacksRef.current.onRtcOffer?.(msg);
+              break;
+            case "rtc_answer":
+              callbacksRef.current.onRtcAnswer?.(msg);
+              break;
+            case "rtc_ice_candidate":
+              callbacksRef.current.onRtcIceCandidate?.(msg);
+              break;
             default:
               break;
           }
@@ -308,6 +331,7 @@ export function useSocket({
         blockedUsers: [...(profile?.blockedUsers || []), ...localBlocks],
         radarRange: profile?.radarRange || 15,
         hotspotRange: profile?.hotspotRange || 15,
+        is_broadcasting_audio: !!isBroadcastingAudio,
       })
     );
   }, [
@@ -325,6 +349,7 @@ export function useSocket({
     localBlocks,
     profile?.radarRange,
     profile?.hotspotRange,
+    isBroadcastingAudio,
   ]);
 
   // Helper send methods
@@ -494,6 +519,33 @@ export function useSocket({
     });
   };
 
+  const sendRtcOffer = (targetUserId: string, offer: any) => {
+    return send({
+      type: "rtc_offer",
+      target_user_id: targetUserId,
+      sender_id: userId,
+      offer,
+    });
+  };
+
+  const sendRtcAnswer = (targetUserId: string, answer: any) => {
+    return send({
+      type: "rtc_answer",
+      target_user_id: targetUserId,
+      sender_id: userId,
+      answer,
+    });
+  };
+
+  const sendRtcIceCandidate = (targetUserId: string, candidate: any) => {
+    return send({
+      type: "rtc_ice_candidate",
+      target_user_id: targetUserId,
+      sender_id: userId,
+      candidate,
+    });
+  };
+
   return {
     socketReady,
     connectionState,
@@ -512,5 +564,8 @@ export function useSocket({
     sendTypingState,
     requestChats,
     requestDMHistory,
+    sendRtcOffer,
+    sendRtcAnswer,
+    sendRtcIceCandidate,
   };
 }

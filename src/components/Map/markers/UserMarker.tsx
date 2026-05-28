@@ -27,7 +27,8 @@ function createAvatarMarkerIconRaw(
   isMe: boolean,
   zoom: number,
   userId: string = "default",
-  isWaving: boolean = false
+  isWaving: boolean = false,
+  isBroadcasting: boolean = false
 ) {
   const baseSize = isMe ? 48 : 44;
   const scale = Math.max(0.3, Math.min(1.4, Math.pow(1.15, zoom - 15)));
@@ -64,12 +65,37 @@ function createAvatarMarkerIconRaw(
         <div style="
           position:absolute; bottom:-2px; right:-2px;
           width:${emojiSize}px; height:${emojiSize}px; border-radius:50%;
-          background:white;
+          background: ${isBroadcasting ? '#e11d48' : 'white'};
+          color: ${isBroadcasting ? 'white' : 'inherit'};
           border: 1.5px solid #e4e4e7;
           display:flex; align-items:center; justify-content:center;
-          font-size:${Math.round(10 * scale)}px;
+          font-size:${Math.round(isBroadcasting ? 8 * scale : 10 * scale)}px;
           box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-        ">${vibeEmoji}</div>
+          z-index: 20;
+        ">${isBroadcasting ? '🎙️' : vibeEmoji}</div>
+        ${isBroadcasting ? `
+        <div style="
+          position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);
+          width:${size}px; height:${size}px; border-radius:50%;
+          border: 2px solid #e11d48;
+          animation: noirme-ripple-anim 1.5s infinite ease-out;
+          z-index: -1;
+        "></div>
+        <div style="
+          position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);
+          width:${size}px; height:${size}px; border-radius:50%;
+          border: 2px solid #e11d48;
+          animation: noirme-ripple-anim 1.5s infinite ease-out;
+          animation-delay: 0.5s;
+          z-index: -1;
+        "></div>
+        <style>
+          @keyframes noirme-ripple-anim {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+            100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+          }
+        </style>
+        ` : ""}
         ${isWaving ? `
         <div style="
           position:absolute; top:-${Math.round(16 * scale)}px; right:-${Math.round(16 * scale)}px;
@@ -104,9 +130,10 @@ function createAvatarMarkerIcon(
   isMe: boolean,
   zoom: number,
   userId: string = "default",
-  isWaving: boolean = false
+  isWaving: boolean = false,
+  isBroadcasting: boolean = false
 ) {
-  const key = `${userId}_${avatarUrl}_${vibeEmoji}_${isMe ? "me" : "them"}_${zoom}_${isWaving ? "waving" : "static"}`;
+  const key = `${userId}_${avatarUrl}_${vibeEmoji}_${isMe ? "me" : "them"}_${zoom}_${isWaving ? "waving" : "static"}_${isBroadcasting ? "mic" : "nomic"}`;
   if (avatarIconCache.has(key)) {
     return avatarIconCache.get(key)!;
   }
@@ -114,7 +141,7 @@ function createAvatarMarkerIcon(
     const keysToDelete = Array.from(avatarIconCache.keys()).slice(0, 200);
     keysToDelete.forEach((k) => avatarIconCache.delete(k));
   }
-  const icon = createAvatarMarkerIconRaw(avatarUrl, vibeEmoji, isMe, zoom, userId, isWaving);
+  const icon = createAvatarMarkerIconRaw(avatarUrl, vibeEmoji, isMe, zoom, userId, isWaving, isBroadcasting);
   avatarIconCache.set(key, icon);
   return icon;
 }
@@ -197,13 +224,13 @@ interface UserMarkerProps {
 }
 
 export function UserMarker({ item }: UserMarkerProps) {
-  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser } = useMapContext();
+  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser, isBroadcastingAudio } = useMapContext();
 
   if (item.type === "me") {
     return (
       <Marker
         position={[item.lat, item.lng]}
-        icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, myUserId)}
+        icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, myUserId, false, isBroadcastingAudio)}
         zIndexOffset={500}
       >
         <Popup className="cloudy-popup">
@@ -226,7 +253,7 @@ export function UserMarker({ item }: UserMarkerProps) {
   return (
     <SmoothMarker
       position={[item.lat, item.lng]}
-      icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, zoom, u.user_id, isWaving)}
+      icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, zoom, u.user_id, isWaving, u.is_broadcasting_audio)}
       zIndexOffset={500}
       eventHandlers={{
         click: () => {

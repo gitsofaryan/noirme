@@ -3,7 +3,7 @@
 import { useMapContext } from "../MapProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Compass, Send, Bell } from "lucide-react";
+import { Compass, Send, Bell, Mic, MicOff } from "lucide-react";
 
 export function FloatingControls() {
   const { isSignedIn } = useAuth();
@@ -16,6 +16,9 @@ export function FloatingControls() {
     setNotifications,
     refreshRadar,
     setShowIntentModal,
+    isBroadcastingAudio,
+    startBroadcast,
+    stopBroadcast,
   } = useMapContext();
 
   const handleRecenterClick = () => {
@@ -104,6 +107,33 @@ export function FloatingControls() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Live Mic Toggle (Below Notifications) */}
+      {isSignedIn && (
+        <div className="pointer-events-auto absolute top-[120px] right-4 z-[410]">
+          <button
+            onClick={() => {
+              if (isBroadcastingAudio) {
+                stopBroadcast();
+              } else {
+                startBroadcast();
+              }
+            }}
+            className={`relative w-9 h-9 flex items-center justify-center rounded-full shadow-sm transition-colors cursor-pointer border ${
+              isBroadcastingAudio 
+                ? "bg-rose-600 text-white border-rose-500 animate-pulse" 
+                : "bg-white/95 backdrop-blur-sm text-zinc-600 hover:text-zinc-900 border-zinc-200"
+            }`}
+            title={isBroadcastingAudio ? "Stop Broadcast" : "Start Broadcast"}
+          >
+            {isBroadcastingAudio ? (
+              <Mic size={18} />
+            ) : (
+              <MicOff size={18} />
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Floating Action Controls (Bottom Right) */}
       <div className="pointer-events-auto absolute bottom-20 right-5 flex flex-col items-center gap-4 z-[410]">
