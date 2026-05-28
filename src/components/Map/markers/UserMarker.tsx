@@ -123,11 +123,13 @@ export function SmoothMarker({
   icon,
   eventHandlers,
   children,
+  zIndexOffset,
 }: {
   position: [number, number];
   icon: L.DivIcon;
   eventHandlers?: any;
   children?: React.ReactNode;
+  zIndexOffset?: number;
 }) {
   const [currentPos, setCurrentPos] = useState<[number, number]>(position);
   const targetPosRef = useRef<[number, number]>(position);
@@ -163,7 +165,7 @@ export function SmoothMarker({
   }, [position]);
 
   return (
-    <Marker position={currentPos} icon={icon} eventHandlers={eventHandlers}>
+    <Marker position={currentPos} icon={icon} eventHandlers={eventHandlers} zIndexOffset={zIndexOffset}>
       {children}
     </Marker>
   );
@@ -187,6 +189,7 @@ export function UserMarker({ item }: UserMarkerProps) {
       <Marker
         position={[item.lat, item.lng]}
         icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, myUserId)}
+        zIndexOffset={500}
       >
         <Popup className="cloudy-popup">
           <div className="flex flex-col items-center justify-center p-3 px-5 text-center text-zinc-800">
@@ -209,6 +212,7 @@ export function UserMarker({ item }: UserMarkerProps) {
     <SmoothMarker
       position={[item.lat, item.lng]}
       icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, zoom, u.user_id, isWaving)}
+      zIndexOffset={500}
       eventHandlers={{
         click: () => {
           setSelectedUser(u);

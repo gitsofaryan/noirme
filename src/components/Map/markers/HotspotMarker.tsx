@@ -121,6 +121,7 @@ export function HotspotMarker({ item }: HotspotMarkerProps) {
     <SmoothMarker
       position={[item.lat, item.lng]}
       icon={createHotspotMarkerIcon(av, hotspot.vibeEmoji || "☕", zoom, hotspot.id)}
+      zIndexOffset={1000}
       eventHandlers={{
         click: () => {
           setSelectedHotspot(hotspot);
