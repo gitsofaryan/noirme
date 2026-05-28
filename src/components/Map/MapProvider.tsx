@@ -107,7 +107,8 @@ interface MapContextType {
 
   // WebRTC Live Audio
   isBroadcastingAudio: boolean;
-  startBroadcast: () => void;
+  isSpaceHost: boolean;
+  startBroadcast: (isHost?: boolean) => void;
   stopBroadcast: () => void;
   startListening: (targetUserId: string) => void;
   stopListening: (targetUserId: string) => void;
@@ -551,12 +552,12 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
-    if (webRTC.isBroadcastingAudio) {
+    if (webRTC.isBroadcastingAudio && webRTC.isSpaceHost) {
       setShowSpaceDrawer(true);
     } else {
       setShowSpaceDrawer(false);
     }
-  }, [webRTC.isBroadcastingAudio]);
+  }, [webRTC.isBroadcastingAudio, webRTC.isSpaceHost]);
 
   // Socket
   const socket = useSocket({
@@ -567,7 +568,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     location,
     profile,
     localBlocks,
-    isBroadcastingAudio: webRTC.isBroadcastingAudio,
+    isBroadcastingAudio: webRTC.isBroadcastingAudio && webRTC.isSpaceHost,
     onSync: (msg) => {
       const userMap = new Map<string, any>();
       for (const u of msg.users) {
@@ -1047,6 +1048,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     leaveHotspot,
 
     isBroadcastingAudio: webRTC.isBroadcastingAudio,
+    isSpaceHost: webRTC.isSpaceHost,
     startBroadcast: webRTC.startBroadcast,
     stopBroadcast: webRTC.stopBroadcast,
     startListening: webRTC.startListening,
@@ -1126,6 +1128,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     activeWaves,
 
     webRTC.isBroadcastingAudio,
+    webRTC.isSpaceHost,
     webRTC.incomingStreams,
     isSpeakerMuted,
     webRTC.speakRequests,

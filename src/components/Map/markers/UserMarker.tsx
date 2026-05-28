@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, memo } from "react";
+import { useEffect, useState, useRef, memo, useCallback } from "react";
 import { Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import { useMapContext, useSocialContext } from "../MapProvider";
@@ -311,6 +311,24 @@ export function UserMarker({ item }: UserMarkerProps) {
     ? isBroadcastingAudio 
     : (isFriend ? !!item.raw?.is_broadcasting_audio : false);
 
+  // Fix Leaflet stale closure bug by saving latest parameters in a Ref
+  const onClickRef = useRef<any>(null);
+  onClickRef.current = () => {
+    if ((item.type === "user" || item.type === "me") && item.raw) {
+      if (item.type === "me" && isBroadcastingAudio) {
+        setShowSpaceDrawer(true);
+      } else {
+        setSelectedUser(item.raw);
+      }
+    }
+  };
+
+  const handleMarkerClick = useCallback(() => {
+    if (onClickRef.current) {
+      onClickRef.current();
+    }
+  }, []);
+
   return (
     <MemoizedUserMarker
       type={item.type}
@@ -323,15 +341,7 @@ export function UserMarker({ item }: UserMarkerProps) {
       isWaving={isWaving}
       isBroadcasting={isBroadcasting}
       rawUser={item.raw}
-      onClick={() => {
-        if ((item.type === "user" || item.type === "me") && item.raw) {
-          if (item.type === "me" && isBroadcastingAudio) {
-            setShowSpaceDrawer(true);
-          } else {
-            setSelectedUser(item.raw);
-          }
-        }
-      }}
+      onClick={handleMarkerClick}
     />
   );
 }

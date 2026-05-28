@@ -17,11 +17,16 @@ export function FloatingControls() {
     refreshRadar,
     setShowIntentModal,
     isBroadcastingAudio,
+    isSpaceHost,
     startBroadcast,
     stopBroadcast,
     showSpaceDrawer,
     setShowSpaceDrawer,
+    incomingStreams,
+    mySpeakStatus,
   } = useMapContext();
+
+  const isInAnotherSpace = !isSpaceHost && (Object.keys(incomingStreams).length > 0 || mySpeakStatus !== "listener");
 
   const handleRecenterClick = () => {
     if (typeof navigator !== "undefined" && navigator.vibrate) {
@@ -112,27 +117,27 @@ export function FloatingControls() {
       </div>
 
       {/* Live Mic Toggle & Space Drawer Control (Below Notifications) */}
-      {isSignedIn && (
+      {isSignedIn && !isInAnotherSpace && (
         <div className="pointer-events-auto absolute top-[120px] right-4 z-[410] flex flex-col gap-2">
           {/* Main Broadcast Toggle */}
           <button
             onClick={() => {
-              if (isBroadcastingAudio) {
+              if (isBroadcastingAudio && isSpaceHost) {
                 stopBroadcast();
                 setShowSpaceDrawer(false);
               } else {
-                startBroadcast();
+                startBroadcast(true);
                 setShowSpaceDrawer(true);
               }
             }}
             className={`relative w-9 h-9 flex items-center justify-center rounded-full shadow-sm transition-colors cursor-pointer border ${
-              isBroadcastingAudio 
+              isBroadcastingAudio && isSpaceHost
                 ? "bg-rose-600 text-white border-rose-500 animate-pulse" 
                 : "bg-white/95 backdrop-blur-sm text-zinc-600 hover:text-zinc-900 border-zinc-200"
             }`}
-            title={isBroadcastingAudio ? "Stop Broadcast" : "Start Broadcast"}
+            title={isBroadcastingAudio && isSpaceHost ? "Stop Broadcast" : "Start Broadcast"}
           >
-            {isBroadcastingAudio ? (
+            {isBroadcastingAudio && isSpaceHost ? (
               <Mic size={18} />
             ) : (
               <MicOff size={18} />
@@ -141,7 +146,7 @@ export function FloatingControls() {
 
           {/* Space Drawer Toggle Control - appears only when mic/broadcast is active */}
           <AnimatePresence>
-            {isBroadcastingAudio && (
+            {isBroadcastingAudio && isSpaceHost && (
               <motion.button
                 initial={{ opacity: 0, scale: 0.8, y: -10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}

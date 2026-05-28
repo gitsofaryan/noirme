@@ -39,6 +39,7 @@ export function useWebRTC({
   sendRtcIceCandidate,
 }: UseWebRTCProps) {
   const [isBroadcastingAudio, setIsBroadcastingAudio] = useState(false);
+  const [isSpaceHost, setIsSpaceHost] = useState(false);
   const [incomingStreams, setIncomingStreams] = useState<Record<string, MediaStream>>({});
   
   // Space Management states
@@ -100,13 +101,16 @@ export function useWebRTC({
     return pc;
   };
 
-  const startBroadcast = async () => {
+  const startBroadcast = async (isHost = false) => {
     try {
       if (localStreamRef.current) return;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       localStreamRef.current = stream;
       setIsBroadcastingAudio(true);
       setIsLocalMicMuted(false);
+      if (isHost) {
+        setIsSpaceHost(true);
+      }
     } catch (err) {
       console.error("[WebRTC] Failed to get local audio:", err);
       alert("Microphone permission denied or not available.");
@@ -121,6 +125,7 @@ export function useWebRTC({
     }
     setIsBroadcastingAudio(false);
     setIsLocalMicMuted(false);
+    setIsSpaceHost(false);
     
     Object.keys(peerConnectionsRef.current).forEach((targetUserId) => {
       const pc = peerConnectionsRef.current[targetUserId];
@@ -342,7 +347,7 @@ export function useWebRTC({
     if (answer.type === "speak_approved") {
       setMySpeakStatus("speaker");
       setIsMutedByHost(false);
-      startBroadcast();
+      startBroadcast(false);
       return;
     }
 
@@ -392,6 +397,7 @@ export function useWebRTC({
 
   return {
     isBroadcastingAudio,
+    isSpaceHost,
     startBroadcast,
     stopBroadcast,
     startListening,

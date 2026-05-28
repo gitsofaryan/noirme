@@ -9,6 +9,7 @@ export function SpaceDrawer() {
   const { isSignedIn } = useAuth();
   const {
     isBroadcastingAudio,
+    isSpaceHost,
     stopBroadcast,
     
     speakRequests,
@@ -24,11 +25,11 @@ export function SpaceDrawer() {
     setShowSpaceDrawer,
   } = useMapContext();
 
-  if (!isSignedIn) return null;
+  if (!isSignedIn || !isSpaceHost) return null;
 
   return (
     <AnimatePresence>
-      {showSpaceDrawer && isBroadcastingAudio && (
+      {showSpaceDrawer && isBroadcastingAudio && isSpaceHost && (
         <>
           {/* Semi-transparent backdrop overlay */}
           <motion.div
