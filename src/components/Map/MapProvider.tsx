@@ -1,0 +1,615 @@
+"use client";
+
+import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { useAuth, getAvatarUrl, UserProfile } from "@/hooks/useAuth";
+import { useGeolocation } from "@/hooks/useGeolocation";
+import { useSocket } from "@/hooks/useSocket";
+import { fetchOSRMRoute, RouteData, TransportMode } from "@/lib/routing";
+
+interface MapContextType {
+  // Auth identity
+  myUserId: string;
+  handle: string;
+  vibeEmoji: string;
+  myAvatarUrl: string;
+  localBlocks: string[];
+
+  // Geolocation state
+  location: { lat: number; lng: number } | null;
+  locStatus: "waiting" | "granted" | "denied";
+  isStasis: boolean;
+  accuracy: number | null;
+  refreshRadar: () => void;
+
+  // Socket state
+  socketReady: boolean;
+  connectionState: "connecting" | "connected" | "disconnected" | "reconnecting";
+  offlineMessages: any[];
+
+  // Map state
+  zoom: number;
+  setZoom: (z: number) => void;
+  recenterTrigger: number;
+  followUser: boolean;
+  setFollowUser: (val: boolean) => void;
+  isInteracting: boolean;
+  setIsInteracting: (val: boolean) => void;
+
+  // Filter state
+  selectedFilter: string;
+  setSelectedFilter: (filter: string) => void;
+
+  // Selections
+  selectedUser: any | null;
+  setSelectedUser: (u: any | null) => void;
+  selectedHotspot: any | null;
+  setSelectedHotspot: (h: any | null) => void;
+
+  // Modal / Inputs
+  showIntentModal: boolean;
+  setShowIntentModal: (show: boolean) => void;
+  intentText: string;
+  setIntentText: (text: string) => void;
+  customHotspotRange: number;
+  setCustomHotspotRange: (range: number) => void;
+
+  // Interaction feedback / flags
+  hasWaved: boolean;
+  setHasWaved: (waved: boolean) => void;
+  confirmBlock: boolean;
+  setConfirmBlock: (confirm: boolean) => void;
+
+  // Notification and Toast streams
+  toasts: Array<{ id: string; message: string; type: "default" | "wave" }>;
+  addToast: (message: string, type?: "default" | "wave") => void;
+  notifications: Array<{ id: string; text: string; time: number; read: boolean }>;
+  setNotifications: React.Dispatch<React.SetStateAction<Array<{ id: string; text: string; time: number; read: boolean }>>>;
+  showNotifDropdown: boolean;
+  setShowNotifDropdown: (show: boolean) => void;
+  activeWaves: Array<{ sender_id: string; expires_at: number }>;
+
+  // Action methods
+  handleWave: () => void;
+  handleBlock: (userId: string) => Promise<void>;
+  postIntent: () => void;
+  requestJoin: () => void;
+  respondRequest: (guestId: string, status: "accepted" | "declined") => void;
+  sendMessage: (text: string) => void;
+  leaveHotspot: () => void;
+
+  // Filtered lists
+  filteredUsers: any[];
+  filteredHotspots: any[];
+
+
+  // Routing state
+  activeRoute: RouteData | null;
+  activeRouteMode: TransportMode;
+  setActiveRouteMode: (mode: TransportMode) => void;
+  routingTarget: { lat: number; lng: number; name: string } | null;
+  setRoutingTarget: (target: { lat: number; lng: number; name: string } | null) => void;
+  isLoadingRoute: boolean;
+  clearActiveRoute: () => void;
+}
+
+const MapContext = createContext<MapContextType | undefined>(undefined);
+
+export function MapProvider({ children }: { children: React.ReactNode }) {
+  const { isSignedIn, user, profile, blockUser } = useAuth();
+
+  const myUserId =
+    user?.id ||
+    user?.username ||
+    (typeof window !== "undefined" ? localStorage.getItem("noirme_anon_id") : null) ||
+    "anon";
+
+  const handle = profile?.handle || user?.username || "";
+  const vibeEmoji = profile?.vibeEmoji || "☕";
+  const myAvatarUrl =
+    profile?.avatar_url || (user ? getAvatarUrl(user.username) : getAvatarUrl("anon"));
+
+  const [localBlocks, setLocalBlocks] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // Sync with local storage events (for unblocking from profile page)
+  useEffect(() => {
+    const syncBlocks = () => {
+      try {
+        const local = JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+        setLocalBlocks(local);
+      } catch (e) {}
+    };
+    window.addEventListener("storage", syncBlocks);
+    return () => window.removeEventListener("storage", syncBlocks);
+  }, []);
+
+  // UI state
+  const [zoom, setZoom] = useState(15);
+  const [recenterTrigger, setRecenterTrigger] = useState(0);
+  const [followUser, setFollowUser] = useState(true);
+  const [isInteracting, setIsInteracting] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState("all");
+
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [selectedHotspot, _setSelectedHotspot] = useState<any | null>(null);
+  const selectedHotspotRef = useRef<any | null>(null);
+
+  const setSelectedHotspot = (val: any) => {
+    if (typeof val === "function") {
+      const nextVal = val(selectedHotspotRef.current);
+      selectedHotspotRef.current = nextVal;
+      _setSelectedHotspot(nextVal);
+    } else {
+      selectedHotspotRef.current = val;
+      _setSelectedHotspot(val);
+    }
+  };
+
+  const [showIntentModal, setShowIntentModal] = useState(false);
+  const [intentText, setIntentText] = useState("");
+  const [customHotspotRange, setCustomHotspotRange] = useState(15);
+
+  useEffect(() => {
+    if (showIntentModal) {
+      setCustomHotspotRange(profile?.hotspotRange || 15);
+    }
+  }, [showIntentModal, profile?.hotspotRange]);
+
+  const [hasWaved, setHasWaved] = useState(false);
+  const [confirmBlock, setConfirmBlock] = useState(false);
+
+  useEffect(() => {
+    setHasWaved(false);
+    setConfirmBlock(false);
+  }, [selectedUser]);
+
+  // Notifications and Toast streams
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: "default" | "wave" }>>([]);
+  const [notifications, setNotifications] = useState<Array<{ id: string; text: string; time: number; read: boolean }>>([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [activeWaves, setActiveWaves] = useState<Array<{ sender_id: string; expires_at: number }>>([]);
+
+  const addToast = (message: string, type: "default" | "wave" = "default") => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setActiveWaves((prev) => prev.filter((w) => w.expires_at > now));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Geolocation
+  const maskLocation = profile?.maskLocation ?? true;
+  const {
+    location,
+    status: locStatus,
+    isStasis,
+    accuracy,
+    refreshLocation,
+  } = useGeolocation(maskLocation);
+
+  // Sync lists from socket
+  const [activeUsers, setActiveUsers] = useState<any[]>([]);
+  const [intents, setIntents] = useState<any[]>([]);
+
+
+  // Routing state
+  const [activeRoute, setActiveRoute] = useState<RouteData | null>(null);
+  const [activeRouteMode, setActiveRouteMode] = useState<TransportMode>("foot");
+  const [routingTarget, setRoutingTarget] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+
+  const clearActiveRoute = () => {
+    setActiveRoute(null);
+    setRoutingTarget(null);
+  };
+
+  useEffect(() => {
+    if (!location || !routingTarget) {
+      setActiveRoute(null);
+      return;
+    }
+
+    let active = true;
+    setIsLoadingRoute(true);
+    fetchOSRMRoute(location.lat, location.lng, routingTarget.lat, routingTarget.lng, activeRouteMode)
+      .then((data) => {
+        if (active) {
+          setActiveRoute(data);
+          setIsLoadingRoute(false);
+        }
+      })
+      .catch((err) => {
+        console.error("[noirme] Route fetch failed:", err);
+        if (active) {
+          setIsLoadingRoute(false);
+          addToast("Failed to calculate route", "default");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [location?.lat, location?.lng, routingTarget, activeRouteMode]);
+
+  // Sync selected user drawer with real-time active users updates
+  const selectedUserRef = useRef<any>(null);
+  selectedUserRef.current = selectedUser;
+  useEffect(() => {
+    const current = selectedUserRef.current;
+    if (!current) return;
+    const latest = activeUsers.find((u) => u.user_id === current.user_id);
+    if (latest) {
+      if (
+        latest.age !== current.age ||
+        latest.gender !== current.gender ||
+        latest.bio !== current.bio ||
+        latest.vibeEmoji !== current.vibeEmoji ||
+        latest.avatar_url !== current.avatar_url ||
+        latest.username !== current.username ||
+        JSON.stringify(latest.selectedTags) !== JSON.stringify(current.selectedTags)
+      ) {
+        setSelectedUser(latest);
+      }
+    } else {
+      setSelectedUser(null);
+    }
+  }, [activeUsers]);
+
+  // Socket
+  const socket = useSocket({
+    userId: myUserId,
+    handle,
+    vibeEmoji,
+    avatarUrl: myAvatarUrl,
+    location,
+    profile,
+    localBlocks,
+    onSync: (msg) => {
+      const userMap = new Map<string, any>();
+      for (const u of msg.users) {
+        if (u.user_id !== myUserId) userMap.set(u.user_id, u);
+      }
+      setActiveUsers(Array.from(userMap.values()));
+      setIntents(msg.hotspots || []);
+    },
+    onLocationUpdate: (msg) => {
+      if (msg.data.user_id !== myUserId) {
+        setActiveUsers((prev) => {
+          const filtered = prev.filter((u) => u.user_id !== msg.data.user_id);
+          if (!prev.some((u) => u.user_id === msg.data.user_id)) {
+            setNotifications((prevNotifs) =>
+              [
+                {
+                  id: Math.random().toString(36).substring(7),
+                  text: `@${msg.data.username} is now nearby`,
+                  time: Date.now(),
+                  read: false,
+                },
+                ...prevNotifs,
+              ].slice(0, 5)
+            );
+          }
+          return [...filtered, msg.data];
+        });
+      }
+    },
+    onHotspotsList: (msg) => {
+      setIntents(msg.hotspots || []);
+      if (selectedHotspotRef.current) {
+        const updated = msg.hotspots.find((h: any) => h.id === selectedHotspotRef.current?.id);
+        if (updated) {
+          setSelectedHotspot(updated);
+        } else {
+          setSelectedHotspot(null);
+        }
+      }
+    },
+    onHotspotCreated: (msg) => {
+      setSelectedHotspot(msg.hotspot);
+    },
+    onJoinRequestReceived: (msg) => {
+      setNotifications((prev) =>
+        [
+          {
+            id: Math.random().toString(36).substring(7),
+            text: `@${msg.username} wants to join your hotspot`,
+            time: Date.now(),
+            read: false,
+          },
+          ...prev,
+        ].slice(0, 5)
+      );
+      if (selectedHotspotRef.current && selectedHotspotRef.current.id === msg.roomId) {
+        setSelectedHotspot(msg.hotspot);
+      }
+    },
+    onJoinResponse: (msg) => {
+      if (selectedHotspotRef.current && selectedHotspotRef.current.id === msg.roomId) {
+        setSelectedHotspot(msg.hotspot);
+      }
+    },
+    onRoomSync: (msg) => {
+      if (selectedHotspotRef.current && selectedHotspotRef.current.id === msg.roomId) {
+        setSelectedHotspot(msg.hotspot);
+      }
+    },
+    onNewMessage: (msg) => {
+      if (selectedHotspotRef.current && selectedHotspotRef.current.id === msg.roomId) {
+        setSelectedHotspot((prev: any) => {
+          if (!prev) return null;
+          // Filter out matching offline optimistic message from log
+          const rawMsgs = prev.messages.filter(
+            (m: any) => !m.id.startsWith("msg_offline_") || m.text !== msg.message.text
+          );
+          if (rawMsgs.some((m: any) => m.id === msg.message.id)) return prev;
+          return {
+            ...prev,
+            messages: [...rawMsgs, msg.message],
+          };
+        });
+      }
+    },
+    onWaveReceived: (msg) => {
+      addToast(`👋 ${msg.sender_username} waved at you!`, "wave");
+      setNotifications((prev) =>
+        [
+          {
+            id: Math.random().toString(36).substring(7),
+            text: `@${msg.sender_username} waved at you!`,
+            time: Date.now(),
+            read: false,
+          },
+          ...prev,
+        ].slice(0, 5)
+      );
+      setActiveWaves((prev) => [
+        ...prev.filter((w) => w.sender_id !== msg.sender_id),
+        { sender_id: msg.sender_id, expires_at: Date.now() + 10000 },
+      ]);
+    },
+    onUserDisconnected: (msg) => {
+      setActiveUsers((prev) => prev.filter((u) => u.user_id !== msg.user_id));
+    },
+  });
+
+  // Action methods
+  const handleWave = () => {
+    if (!selectedUser) return;
+    setHasWaved(true);
+    addToast(`You waved at ${selectedUser.username}`);
+    socket.sendWave(selectedUser.user_id);
+  };
+
+  const handleBlock = async (userId: string) => {
+    await blockUser(userId);
+    const newBlocks = [...localBlocks, userId];
+    setLocalBlocks(newBlocks);
+    localStorage.setItem("noirme_local_blocks", JSON.stringify(newBlocks));
+    setSelectedUser(null);
+  };
+
+  const postIntent = () => {
+    if (!intentText.trim()) return;
+    socket.createHotspot(intentText, customHotspotRange);
+    setIntentText("");
+    setShowIntentModal(false);
+  };
+
+  const requestJoin = () => {
+    if (!selectedHotspot) return;
+    socket.requestJoin(selectedHotspot.id);
+  };
+
+  const respondRequest = (guestId: string, status: "accepted" | "declined") => {
+    if (!selectedHotspot) return;
+    socket.respondRequest(selectedHotspot.id, guestId, status);
+  };
+
+  const sendMessage = (text: string) => {
+    if (!selectedHotspot) return;
+    socket.sendMessage(selectedHotspot.id, text, (optimisticMsg) => {
+      setSelectedHotspot((prev: any) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          messages: [...prev.messages, optimisticMsg],
+        };
+      });
+      addToast("Offline: Message queued.", "default");
+    });
+  };
+
+  const leaveHotspot = () => {
+    if (!selectedHotspot) return;
+    socket.leaveHotspot(selectedHotspot.id);
+    setSelectedHotspot(null);
+  };
+
+  const refreshRadar = () => {
+    setFollowUser(true);
+    setRecenterTrigger((t) => t + 1);
+    refreshLocation().then(() => {
+      socket.requestSync();
+    });
+  };
+
+  // Helper distance calculator
+  function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Radius of Earth in km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  const FILTER_KEYWORDS: Record<string, string[]> = {
+    cafe: ["coffee", "chai", "boba", "tea", "ramen", "food", "eat", "matcha", "latte", "café", "cafe", "brunch", "lunch", "dinner", "cook", "☕", "🍵", "🧋", "🍜", "🍕"],
+    dating: ["date", "dating", "love", "crush", "vibe", "connection", "hangout", "chill", "flirt", "coffee date", "sunset", "romantic", "💕", "✨", "🔥"],
+    gaming: ["game", "gaming", "chess", "board", "cards", "esport", "valorant", "minecraft", "ps5", "xbox", "pubg", "bgmi", "cod", "fortnite", "dice", "ludo", "🎮", "🎲", "🎯"],
+    movies: ["movie", "film", "cinema", "netflix", "anime", "watch", "series", "binge", "popcorn", "marvel", "bollywood", "horror", "comedy", "thriller", "🍿", "🎬", "🎌"],
+    study: ["study", "code", "coding", "book", "exam", "learn", "grind", "library", "homework", "project", "hackathon", "dsa", "leetcode", "🎒", "📚", "💻"],
+    music: ["guitar", "jam", "music", "vinyl", "sing", "beat", "lofi", "karaoke", "concert", "piano", "rap", "podcast", "spotify", "🎸", "🎧", "🎤"],
+    sports: ["gym", "run", "walk", "bike", "swim", "sport", "workout", "yoga", "cricket", "football", "basketball", "badminton", "trek", "hike", "🛹", "🏋️", "🚴", "🏃", "🧘"],
+    chill: ["chill", "vibe", "hangout", "drive", "explore", "roam", "wander", "sunset", "night", "midnight", "smoke", "terrace", "rooftop", "🎨", "⚡", "📷", "🌿", "🍳", "🚗", "🌙"],
+  };
+
+  function matchesFilter(intent: any, key: string): boolean {
+    if (key === "all") return true;
+    const keywords = FILTER_KEYWORDS[key];
+    if (!keywords) return true;
+    const t = (intent.title || "").toLowerCase();
+    return keywords.some((k) => t.includes(k));
+  }
+
+  function matchesUserFilter(u: any, key: string): boolean {
+    if (key === "all") return true;
+    const keywords = FILTER_KEYWORDS[key];
+    if (!keywords) return true;
+
+    // Match by vibe emoji
+    const userVibe = u.vibeEmoji || "";
+    if (keywords.includes(userVibe)) return true;
+
+    // Match by bio or tags
+    const bio = (u.bio || "").toLowerCase();
+    const tags = u.selectedTags || [];
+    if (keywords.some((k) => bio.includes(k))) return true;
+    if (tags.some((tag: string) => keywords.some((k) => tag.toLowerCase().includes(k)))) return true;
+
+    return false;
+  }
+
+  // Filter lists based on user settings and ranges
+  const radarRadius = profile?.radarRange || 15;
+
+  const filteredUsers = activeUsers.filter((u) => {
+    const blockedIds = [...(profile?.blockedUsers || []), ...localBlocks];
+    const isBlocked = blockedIds.includes(u.user_id) || (u.blockedUsers || []).includes(myUserId);
+    if (!location) return false;
+    const isWithinRange = getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= radarRadius;
+    const isMatchesFilter = matchesUserFilter(u, selectedFilter);
+    return !isBlocked && isWithinRange && isMatchesFilter;
+  });
+
+  const filteredHotspots = intents.filter((h) => {
+    const blockedIds = [...(profile?.blockedUsers || []), ...localBlocks];
+    const isBlocked = blockedIds.includes(h.host_id);
+    if (!location) return false;
+    const isWithinRange =
+      getDistanceKm(location.lat, location.lng, h.lat, h.lng) <= radarRadius &&
+      getDistanceKm(location.lat, location.lng, h.lat, h.lng) <= (h.hotspotRange || 15);
+    const isNotExpired = h.expires_at > Date.now();
+    const isMatchesFilter = matchesFilter(h, selectedFilter);
+    return !isBlocked && isWithinRange && isNotExpired && isMatchesFilter;
+  });
+
+  return (
+    <MapContext.Provider
+      value={{
+        myUserId,
+        handle,
+        vibeEmoji,
+        myAvatarUrl,
+        localBlocks,
+
+        location,
+        locStatus,
+        isStasis,
+        accuracy,
+        refreshRadar,
+
+        socketReady: socket.socketReady,
+        connectionState: socket.connectionState,
+        offlineMessages: socket.offlineMessages,
+
+        zoom,
+        setZoom,
+        recenterTrigger,
+        followUser,
+        setFollowUser,
+        isInteracting,
+        setIsInteracting,
+
+        selectedFilter,
+        setSelectedFilter,
+
+        selectedUser,
+        setSelectedUser,
+        selectedHotspot,
+        setSelectedHotspot,
+
+        showIntentModal,
+        setShowIntentModal,
+        intentText,
+        setIntentText,
+        customHotspotRange,
+        setCustomHotspotRange,
+
+        hasWaved,
+        setHasWaved,
+        confirmBlock,
+        setConfirmBlock,
+
+        toasts,
+        addToast,
+        notifications,
+        setNotifications,
+        showNotifDropdown,
+        setShowNotifDropdown,
+        activeWaves,
+
+        handleWave,
+        handleBlock,
+        postIntent,
+        requestJoin,
+        respondRequest,
+        sendMessage,
+        leaveHotspot,
+
+        filteredUsers,
+        filteredHotspots,
+
+
+        activeRoute,
+        activeRouteMode,
+        setActiveRouteMode,
+        routingTarget,
+        setRoutingTarget,
+        isLoadingRoute,
+        clearActiveRoute,
+      }}
+    >
+      {children}
+    </MapContext.Provider>
+  );
+}
+
+export function useMapContext() {
+  const context = useContext(MapContext);
+  if (!context) {
+    throw new Error("useMapContext must be used within a MapProvider");
+  }
+  return context;
+}
