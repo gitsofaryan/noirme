@@ -351,7 +351,7 @@ async function sendSync(ws: WebSocket) {
         }
 
         if (validUserIds.length > 0) {
-          const rawUsers = (await redisPub.hMGet("noirme:active_users", validUserIds)) as any[];
+          const rawUsers = (await redisPub.hmGet("noirme:active_users", validUserIds)) as any[];
           allUsers = rawUsers.filter(Boolean).map((u: any) => JSON.parse(u));
         }
       }
@@ -364,7 +364,7 @@ async function sendSync(ws: WebSocket) {
       );
 
       if (nearbyHotspotIds && nearbyHotspotIds.length > 0) {
-        const rawHotspots = (await redisPub.hMGet("noirme:hotspots", nearbyHotspotIds)) as any[];
+        const rawHotspots = (await redisPub.hmGet("noirme:hotspots", nearbyHotspotIds)) as any[];
 
         const validHotspots: Hotspot[] = [];
         const expiredHotspotIds: string[] = [];
@@ -1178,10 +1178,32 @@ const shutdown = async () => {
 
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
-// Boot server
-initRedis().then(() => {
-  server.listen(PORT, () => {
-    logEvent("server_running", { port: PORT });
+// Boot server with error handling
+initRedis()
+  .then(() => {
+    server.listen(PORT, () => {
+      logEvent("server_running", {
+        port: PORT,
+        environment: process.env.NODE_ENV || "development",
+        redis_enabled: useRedis,
+      });
+    });
+
+    server.on("error", (err) => {
+      logEvent("server_error", { error: err.message, code: (err as any).code });
+      process.exit(1);
+    });
+  })
+  .catch((err) => {
+    logEvent("redis_init_failed", { error: err.message, stack: err.stack });
+    console.error("Failed to initialize Redis. Starting in fallback mode...");
+    // Start server even if Redis fails
+    server.listen(PORT, () => {
+      logEvent("server_running_fallback", {
+        port: PORT,
+        redis_enabled: false,
+      });
+    });
   });
-});

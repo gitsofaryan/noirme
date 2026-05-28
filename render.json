@@ -1,0 +1,25 @@
+{
+  "buildCommand": "npm run build",
+  "startCommand": "node --max-old-space-size=512 src/server/socket-server.ts",
+  "envs": [
+    {
+      "key": "REDIS_URL",
+      "sync": false
+    },
+    {
+      "key": "NODE_ENV",
+      "value": "production"
+    },
+    {
+      "key": "PORT",
+      "value": "3001"
+    }
+  ],
+  "services": [
+    {
+      "type": "redis",
+      "name": "redis",
+      "plan": "free"
+    }
+  ]
+}
