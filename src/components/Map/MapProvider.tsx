@@ -374,7 +374,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   // Save accepted friends to Puter KV as a string array (debounced)
   const friendsSaveTimeoutRef = useRef<any>(null);
   useEffect(() => {
-    if (!myUserId || myUserId === "anon") return;
+    if (!isSignedIn || !myUserId || myUserId === "anon" || myUserId.startsWith("anon_")) return;
     if (typeof window !== "undefined" && window.puter) {
       if (friendsSaveTimeoutRef.current) {
         clearTimeout(friendsSaveTimeoutRef.current);
@@ -395,12 +395,12 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(friendsSaveTimeoutRef.current);
       }
     };
-  }, [chatRequests, myUserId]);
+  }, [chatRequests, myUserId, isSignedIn]);
 
   // Load accepted friends from Puter KV on login (instant load, runs once per session)
   const friendsLoadedRef = useRef(false);
   useEffect(() => {
-    if (friendsLoadedRef.current || !myUserId || myUserId === "anon") return;
+    if (friendsLoadedRef.current || !isSignedIn || !myUserId || myUserId === "anon" || myUserId.startsWith("anon_")) return;
     if (typeof window !== "undefined" && window.puter) {
       friendsLoadedRef.current = true;
       window.puter.kv.get(`friends_list_${myUserId}`)
