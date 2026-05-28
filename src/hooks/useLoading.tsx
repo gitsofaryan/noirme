@@ -9,10 +9,10 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // Keep navbar hidden while map is loading (3.5 seconds to account for minLoadingTimePassed + animations)
+        // Keep navbar hidden while map is loading (1.5 seconds to optimize initial paint times)
         const timer = setTimeout(() => {
             setIsLoading(false);
-        }, 3500);
+        }, 1500);
 
         return () => clearTimeout(timer);
     }, []);

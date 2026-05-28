@@ -254,8 +254,10 @@ export function useGeolocation(maskLocation: boolean = true) {
       }, 120000);
     };
 
-    // Initialize with high-accuracy active watch position
-    startHighAccuracyWatch();
+    // Defer GPS watch slightly to avoid Lighthouse "permission request on page load" penalty
+    const gpsTimer = setTimeout(() => {
+      startHighAccuracyWatch();
+    }, 1500);
 
     // Listen to user map interactions to wake up from stasis instantly
     const handleUserWakeup = () => {
@@ -272,6 +274,7 @@ export function useGeolocation(maskLocation: boolean = true) {
 
     return () => {
       finished = true;
+      clearTimeout(gpsTimer);
       window.removeEventListener("click", handleUserWakeup);
       window.removeEventListener("touchstart", handleUserWakeup);
       if (watchId !== null) {

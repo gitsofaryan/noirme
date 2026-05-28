@@ -33,8 +33,6 @@ export const viewport: Viewport = {
   themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 };
 
 export default function RootLayout({
@@ -48,6 +46,11 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <link rel="preconnect" href="https://ipwho.is" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://freeipapi.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://api.dicebear.com" crossOrigin="anonymous" />
+      </head>
       <body className="h-full bg-white text-zinc-900 selection:bg-zinc-200 overflow-hidden" suppressHydrationWarning>
         <Script src="https://js.puter.com/v2/" strategy="afterInteractive" />
         <Script id="register-sw" strategy="afterInteractive">
