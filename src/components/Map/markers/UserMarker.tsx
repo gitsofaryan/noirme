@@ -250,17 +250,10 @@ const MemoizedUserMarkerComponent = ({
         position={[lat, lng]}
         icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, myUserId, false, isBroadcasting)}
         zIndexOffset={500}
-      >
-        <Popup className="cloudy-popup">
-          <div className="flex flex-col items-center justify-center p-3 px-5 text-center text-zinc-800">
-            <div className="w-12 h-12 rounded-full overflow-hidden bg-white/60 border border-white/80 shadow-sm flex items-center justify-center mb-1.5">
-              <img src={myAvatarUrl} className="w-full h-full object-cover" alt="you" />
-            </div>
-            <p className="font-black text-sm text-zinc-900 leading-none">Me</p>
-            <p className="text-[9px] font-semibold text-zinc-500/80 mt-1 uppercase tracking-wider">@{myUserId}</p>
-          </div>
-        </Popup>
-      </Marker>
+        eventHandlers={{
+          click: onClick,
+        }}
+      />
     );
   }
 
@@ -309,7 +302,7 @@ interface UserMarkerProps {
 }
 
 export function UserMarker({ item }: UserMarkerProps) {
-  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser, isBroadcastingAudio } = useMapContext();
+  const { zoom, myAvatarUrl, vibeEmoji, myUserId, activeWaves, setSelectedUser, isBroadcastingAudio, setShowSpaceDrawer } = useMapContext();
   const { friends } = useSocialContext();
 
   const isWaving = item.type === "user" && activeWaves.some((w) => w.sender_id === item.raw?.user_id);
@@ -331,8 +324,12 @@ export function UserMarker({ item }: UserMarkerProps) {
       isBroadcasting={isBroadcasting}
       rawUser={item.raw}
       onClick={() => {
-        if (item.type === "user" && item.raw) {
-          setSelectedUser(item.raw);
+        if ((item.type === "user" || item.type === "me") && item.raw) {
+          if (item.type === "me" && isBroadcastingAudio) {
+            setShowSpaceDrawer(true);
+          } else {
+            setSelectedUser(item.raw);
+          }
         }
       }}
     />

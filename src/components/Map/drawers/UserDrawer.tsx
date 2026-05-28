@@ -4,7 +4,7 @@ import { useMapContext, useSocialContext, useDMContext } from "../MapProvider";
 import { getAvatarUrl, useAuth } from "@/hooks/useAuth";
 import { getDistanceKm } from "@/hooks/useGeolocation";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Navigation, Volume2, VolumeX } from "lucide-react";
+import { X, MapPin, Navigation, Mic, MicOff, Volume2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export function UserDrawer() {
@@ -21,9 +21,19 @@ export function UserDrawer() {
     handleBlock,
     setRoutingTarget,
     myUserId,
+    incomingStreams,
     startListening,
     stopListening,
-    incomingStreams,
+    
+    speakRequests,
+    activeSpeakers,
+    mySpeakStatus,
+    isMutedByHost,
+    isLocalMicMuted,
+    requestToSpeak,
+    cancelSpeakRequest,
+    toggleLocalMic,
+    leaveSpace,
   } = useMapContext();
 
   const { chatRequests, sendChatRequest } = useSocialContext();
@@ -42,8 +52,6 @@ export function UserDrawer() {
     (requestSent && requestSent.status === "accepted") ||
     (requestReceived && requestReceived.status === "accepted")
   );
-
-
 
   return (
     <AnimatePresence>
@@ -153,37 +161,103 @@ export function UserDrawer() {
                 <Navigation size={13} /> Get Directions
               </button>
 
-              {/* Live Audio Connection (Listen only when they are broadcasting) */}
-              {isSignedIn && isConnected && selectedUser.is_broadcasting_audio && (
-                <div className="bg-zinc-50/80 rounded-2xl p-3.5 border border-zinc-100 space-y-2">
-                  <p className="text-[9px] font-bold tracking-widest uppercase text-zinc-400">
-                    Live Audio Broadcast
-                  </p>
-                  <button
-                    onClick={() => {
-                      if (incomingStreams[selectedUser.user_id]) {
-                        stopListening(selectedUser.user_id);
-                      } else {
-                        startListening(selectedUser.user_id);
-                      }
-                    }}
-                    className={`w-full py-3 px-3 rounded-xl text-[11px] font-bold border transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer shadow-sm ${
-                      incomingStreams[selectedUser.user_id]
-                        ? "bg-zinc-900 border-zinc-900 text-white"
-                        : "bg-white border-zinc-200 text-zinc-800 hover:bg-zinc-50"
-                    }`}
-                  >
-                    {incomingStreams[selectedUser.user_id] ? (
-                      <>
-                        <Volume2 size={13} className="animate-pulse" /> Stop Listening 🎧
-                      </>
-                    ) : (
-                      <>
-                        <VolumeX size={13} /> Listen Live 🎧
-                      </>
-                    )}
-                  </button>
-                </div>
+              {/* Audio Space Section */}
+              {isSignedIn && (
+                (() => {
+                  const isMe = selectedUser.user_id === myUserId;
+                  
+                  if (isMe) {
+                    return null;
+                  }
+                  
+                  if (selectedUser.is_broadcasting_audio) {
+                    const isListening = !!incomingStreams[selectedUser.user_id];
+                    
+                    return (
+                      <div className="bg-zinc-50 border border-zinc-150 rounded-2xl p-4 space-y-3.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500 flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            Live Audio Space 🎙️
+                          </span>
+                        </div>
+
+                        {!isListening ? (
+                          <button
+                            onClick={() => startListening(selectedUser.user_id)}
+                            className="w-full py-3.5 rounded-2xl bg-zinc-950 hover:bg-black text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer shadow-md"
+                          >
+                            <Volume2 size={13} /> Join Space as Listener 🎧
+                          </button>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => leaveSpace(selectedUser.user_id)}
+                                className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer shadow-sm"
+                              >
+                                Leave Space 🛑
+                              </button>
+                              
+                              {mySpeakStatus === "listener" && (
+                                <button
+                                  onClick={() => requestToSpeak(selectedUser.user_id)}
+                                  className="flex-1 py-3 rounded-xl bg-white border border-zinc-200 text-zinc-800 hover:bg-zinc-50 text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer shadow-sm"
+                                >
+                                  <Mic size={13} /> Request to Speak
+                                </button>
+                              )}
+
+                              {mySpeakStatus === "requesting" && (
+                                <button
+                                  onClick={() => cancelSpeakRequest(selectedUser.user_id)}
+                                  className="flex-1 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer shadow-sm animate-pulse"
+                                >
+                                  Pending... (Cancel)
+                                </button>
+                              )}
+                            </div>
+
+                            {mySpeakStatus === "speaker" && (
+                              <div className="border-t border-zinc-200/60 pt-3 flex flex-col gap-2">
+                                <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
+                                  <span>You are a Speaker</span>
+                                  {isMutedByHost && <span className="text-rose-500 font-black">Muted by Host</span>}
+                                </div>
+                                <button
+                                  onClick={() => !isMutedByHost && toggleLocalMic()}
+                                  disabled={isMutedByHost}
+                                  className={`w-full py-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 shadow-sm ${
+                                    isMutedByHost
+                                      ? "bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed"
+                                      : isLocalMicMuted
+                                      ? "bg-white border-zinc-200 text-zinc-800 hover:bg-zinc-50"
+                                      : "bg-zinc-900 border-zinc-900 text-white hover:bg-black"
+                                  }`}
+                                >
+                                  {isMutedByHost ? (
+                                    <>
+                                      <MicOff size={13} /> Muted by Host
+                                    </>
+                                  ) : isLocalMicMuted ? (
+                                    <>
+                                      <MicOff size={13} /> Unmute Microphone
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Mic size={13} /> Mute Microphone
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()
               )}
 
               {/* Connect / Chat Button */}

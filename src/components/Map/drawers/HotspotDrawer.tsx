@@ -19,9 +19,27 @@ export function HotspotDrawer() {
     leaveHotspot,
     socketReady,
     setRoutingTarget,
+    setSelectedUser,
+    activeUsers,
   } = useMapContext();
 
-
+  const handleUserClick = (targetUserId: string, targetUsername: string, targetAvatarUrl?: string) => {
+    if (targetUserId === myUserId) return;
+    const userObj = activeUsers?.find((u: any) => u.user_id === targetUserId);
+    if (userObj) {
+      setSelectedUser(userObj);
+      setSelectedHotspot(null);
+    } else {
+      setSelectedUser({
+        user_id: targetUserId,
+        username: targetUsername,
+        avatar_url: targetAvatarUrl,
+        lat: selectedHotspot?.lat || 0,
+        lng: selectedHotspot?.lng || 0,
+      });
+      setSelectedHotspot(null);
+    }
+  };
 
   const isHost = selectedHotspot?.host_id === myUserId;
   const myRequest = selectedHotspot?.requests?.find((r: any) => r.user_id === myUserId);
@@ -61,7 +79,10 @@ export function HotspotDrawer() {
             {/* Header Info */}
             <div className="flex justify-between items-start gap-3 border-b border-zinc-100 pb-4">
               <div className="flex items-center gap-3">
-                <div className="relative">
+                <div
+                  onClick={() => !isHost && handleUserClick(selectedHotspot.host_id, selectedHotspot.host_username, selectedHotspot.host_avatar)}
+                  className={`relative ${!isHost ? "cursor-pointer hover:opacity-85 transition-opacity" : ""}`}
+                >
                   <img
                     src={
                       selectedHotspot.host_avatar ||
@@ -74,8 +95,11 @@ export function HotspotDrawer() {
                     {selectedHotspot.vibeEmoji}
                   </div>
                 </div>
-                <div>
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                <div
+                  onClick={() => !isHost && handleUserClick(selectedHotspot.host_id, selectedHotspot.host_username, selectedHotspot.host_avatar)}
+                  className={!isHost ? "cursor-pointer group" : ""}
+                >
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest group-hover:underline">
                     {isHost ? "Your Hotspot" : `Hosted by @${selectedHotspot.host_username}`}
                   </span>
                   <h3 className="text-sm font-bold text-zinc-900 leading-tight">
@@ -118,7 +142,10 @@ export function HotspotDrawer() {
 
             {/* Host Profile Info */}
             {!isHost && (
-              <div className="bg-zinc-50 border border-zinc-100 rounded-2xl p-3.5 space-y-2.5 mt-3 mb-1">
+              <div
+                onClick={() => handleUserClick(selectedHotspot.host_id, selectedHotspot.host_username, selectedHotspot.host_avatar)}
+                className="bg-zinc-50 border border-zinc-100 rounded-2xl p-3.5 space-y-2.5 mt-3 mb-1 cursor-pointer hover:bg-zinc-100/70 transition-colors"
+              >
                 <div className="space-y-1">
                   <h4 className="text-[9px] font-bold tracking-widest uppercase text-zinc-400">About Host</h4>
                   <p className="text-xs text-zinc-700 leading-relaxed font-medium">
@@ -162,13 +189,16 @@ export function HotspotDrawer() {
                             key={r.user_id}
                             className="flex justify-between items-center bg-zinc-50 border border-zinc-100 rounded-2xl p-3"
                           >
-                            <div className="flex items-center gap-2.5">
+                            <div
+                              onClick={() => handleUserClick(r.user_id, r.username, r.avatar_url)}
+                              className="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition-opacity"
+                            >
                               <img
                                 src={r.avatar_url}
                                 className="w-8 h-8 rounded-full border border-zinc-200"
                                 alt={r.username}
                               />
-                              <span className="text-xs font-semibold text-zinc-800">
+                              <span className="text-xs font-semibold text-zinc-800 hover:underline">
                                 @{r.username}
                               </span>
                             </div>
@@ -202,19 +232,25 @@ export function HotspotDrawer() {
                   <div className="flex flex-wrap gap-1.5">
                     {selectedHotspot.requests
                       .filter((r: any) => r.status === "accepted")
-                      .map((r: any) => (
-                        <div
-                          key={r.user_id}
-                          className="flex items-center gap-1.5 bg-zinc-100 border border-zinc-200/50 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-semibold text-zinc-750"
-                        >
-                          <img
-                            src={r.avatar_url}
-                            className="w-5 h-5 rounded-full object-cover"
-                            alt={r.username}
-                          />
-                          {r.user_id === myUserId ? "You (Host)" : `@${r.username}`}
-                        </div>
-                      ))}
+                      .map((r: any) => {
+                        const isMe = r.user_id === myUserId;
+                        return (
+                          <div
+                            key={r.user_id}
+                            onClick={() => !isMe && handleUserClick(r.user_id, r.username, r.avatar_url)}
+                            className={`flex items-center gap-1.5 bg-zinc-100 border border-zinc-200/50 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-semibold text-zinc-750 ${
+                              !isMe ? "cursor-pointer hover:bg-zinc-200 transition-colors" : ""
+                            }`}
+                          >
+                            <img
+                              src={r.avatar_url}
+                              className="w-5 h-5 rounded-full object-cover"
+                              alt={r.username}
+                            />
+                            {isMe ? "You (Host)" : `@${r.username}`}
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
 
@@ -322,19 +358,25 @@ export function HotspotDrawer() {
                       <div className="flex flex-wrap gap-1.5">
                         {selectedHotspot.requests
                           .filter((r: any) => r.status === "accepted")
-                          .map((r: any) => (
-                            <div
-                              key={r.user_id}
-                              className="flex items-center gap-1.5 bg-zinc-100 border border-zinc-200/50 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-semibold text-zinc-750"
-                            >
-                              <img
-                                src={r.avatar_url}
-                                className="w-5 h-5 rounded-full object-cover"
-                                alt={r.username}
-                              />
-                              {r.user_id === myUserId ? "You" : `@${r.username}`}
-                            </div>
-                          ))}
+                          .map((r: any) => {
+                            const isMe = r.user_id === myUserId;
+                            return (
+                              <div
+                                key={r.user_id}
+                                onClick={() => !isMe && handleUserClick(r.user_id, r.username, r.avatar_url)}
+                                className={`flex items-center gap-1.5 bg-zinc-100 border border-zinc-200/50 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-semibold text-zinc-750 ${
+                                  !isMe ? "cursor-pointer hover:bg-zinc-200 transition-colors" : ""
+                                }`}
+                              >
+                                <img
+                                  src={r.avatar_url}
+                                  className="w-5 h-5 rounded-full object-cover"
+                                  alt={r.username}
+                                />
+                                {isMe ? "You" : `@${r.username}`}
+                              </div>
+                            );
+                          })}
                       </div>
                     </div>
 

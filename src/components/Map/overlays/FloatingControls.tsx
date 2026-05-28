@@ -3,7 +3,7 @@
 import { useMapContext } from "../MapProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
-import { Compass, Send, Bell, Mic, MicOff } from "lucide-react";
+import { Compass, Send, Bell, Mic, MicOff, Radio } from "lucide-react";
 
 export function FloatingControls() {
   const { isSignedIn } = useAuth();
@@ -19,6 +19,8 @@ export function FloatingControls() {
     isBroadcastingAudio,
     startBroadcast,
     stopBroadcast,
+    showSpaceDrawer,
+    setShowSpaceDrawer,
   } = useMapContext();
 
   const handleRecenterClick = () => {
@@ -109,15 +111,18 @@ export function FloatingControls() {
         </AnimatePresence>
       </div>
 
-      {/* Live Mic Toggle (Below Notifications) */}
+      {/* Live Mic Toggle & Space Drawer Control (Below Notifications) */}
       {isSignedIn && (
-        <div className="pointer-events-auto absolute top-[120px] right-4 z-[410]">
+        <div className="pointer-events-auto absolute top-[120px] right-4 z-[410] flex flex-col gap-2">
+          {/* Main Broadcast Toggle */}
           <button
             onClick={() => {
               if (isBroadcastingAudio) {
                 stopBroadcast();
+                setShowSpaceDrawer(false);
               } else {
                 startBroadcast();
+                setShowSpaceDrawer(true);
               }
             }}
             className={`relative w-9 h-9 flex items-center justify-center rounded-full shadow-sm transition-colors cursor-pointer border ${
@@ -133,6 +138,29 @@ export function FloatingControls() {
               <MicOff size={18} />
             )}
           </button>
+
+          {/* Space Drawer Toggle Control - appears only when mic/broadcast is active */}
+          <AnimatePresence>
+            {isBroadcastingAudio && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8, y: -10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.8, y: -10 }}
+                transition={{ duration: 0.15 }}
+                onClick={() => {
+                  setShowSpaceDrawer(!showSpaceDrawer);
+                }}
+                className={`w-9 h-9 flex items-center justify-center rounded-full shadow-sm transition-colors cursor-pointer border ${
+                  showSpaceDrawer
+                    ? "bg-zinc-900 text-white border-zinc-800"
+                    : "bg-white/95 backdrop-blur-sm text-zinc-600 hover:text-zinc-900 border-zinc-200"
+                }`}
+                title={showSpaceDrawer ? "Hide Space Drawer" : "Show Space Drawer"}
+              >
+                <Radio size={16} className={showSpaceDrawer ? "animate-pulse" : ""} />
+              </motion.button>
+            )}
+          </AnimatePresence>
         </div>
       )}
 

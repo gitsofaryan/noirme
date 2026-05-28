@@ -114,6 +114,26 @@ interface MapContextType {
   incomingStreams: Record<string, MediaStream>;
   isSpeakerMuted: boolean;
   setIsSpeakerMuted: (muted: boolean) => void;
+
+  // Space Controls
+  speakRequests: any[];
+  activeSpeakers: any[];
+  activeListeners: any[];
+  mySpeakStatus: "listener" | "requesting" | "speaker";
+  isMutedByHost: boolean;
+  isLocalMicMuted: boolean;
+  requestToSpeak: (hostUserId: string) => void;
+  cancelSpeakRequest: (hostUserId: string) => void;
+  approveSpeaker: (speakerUserId: string, username: string, avatarUrl?: string) => void;
+  declineSpeaker: (speakerUserId: string) => void;
+  muteSpeaker: (speakerUserId: string) => void;
+  unmuteSpeaker: (speakerUserId: string) => void;
+  removeSpeaker: (speakerUserId: string) => void;
+  toggleLocalMic: () => void;
+  leaveSpace: (hostUserId: string) => void;
+  showSpaceDrawer: boolean;
+  setShowSpaceDrawer: (show: boolean) => void;
+  profile: any;
 }
 
 interface SocialContextType {
@@ -186,6 +206,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
 
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [selectedHotspot, _setSelectedHotspot] = useState<any | null>(null);
+  const [showSpaceDrawer, setShowSpaceDrawer] = useState(false);
   const selectedHotspotRef = useRef<any | null>(null);
 
   const setSelectedHotspot = (val: any) => {
@@ -522,10 +543,20 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
 
   const webRTC = useWebRTC({
     myUserId,
+    myUsername: handle,
+    myAvatarUrl,
     sendRtcOffer: (target, offer) => socketMethodsRef.current?.sendRtcOffer(target, offer),
     sendRtcAnswer: (target, answer) => socketMethodsRef.current?.sendRtcAnswer(target, answer),
     sendRtcIceCandidate: (target, cand) => socketMethodsRef.current?.sendRtcIceCandidate(target, cand),
   });
+
+  useEffect(() => {
+    if (webRTC.isBroadcastingAudio) {
+      setShowSpaceDrawer(true);
+    } else {
+      setShowSpaceDrawer(false);
+    }
+  }, [webRTC.isBroadcastingAudio]);
 
   // Socket
   const socket = useSocket({
@@ -1024,6 +1055,25 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     isSpeakerMuted,
     setIsSpeakerMuted,
 
+    speakRequests: webRTC.speakRequests,
+    activeSpeakers: webRTC.activeSpeakers,
+    activeListeners: webRTC.activeListeners,
+    mySpeakStatus: webRTC.mySpeakStatus,
+    isMutedByHost: webRTC.isMutedByHost,
+    isLocalMicMuted: webRTC.isLocalMicMuted,
+    requestToSpeak: webRTC.requestToSpeak,
+    cancelSpeakRequest: webRTC.cancelSpeakRequest,
+    approveSpeaker: webRTC.approveSpeaker,
+    declineSpeaker: webRTC.declineSpeaker,
+    muteSpeaker: webRTC.muteSpeaker,
+    unmuteSpeaker: webRTC.unmuteSpeaker,
+    removeSpeaker: webRTC.removeSpeaker,
+    toggleLocalMic: webRTC.toggleLocalMic,
+    leaveSpace: webRTC.leaveSpace,
+    showSpaceDrawer,
+    setShowSpaceDrawer,
+    profile,
+
     filteredUsers,
     filteredHotspots,
     activeUsers,
@@ -1078,6 +1128,14 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     webRTC.isBroadcastingAudio,
     webRTC.incomingStreams,
     isSpeakerMuted,
+    webRTC.speakRequests,
+    webRTC.activeSpeakers,
+    webRTC.activeListeners,
+    webRTC.mySpeakStatus,
+    webRTC.isMutedByHost,
+    webRTC.isLocalMicMuted,
+    showSpaceDrawer,
+    profile,
 
     filteredUsers,
     filteredHotspots,

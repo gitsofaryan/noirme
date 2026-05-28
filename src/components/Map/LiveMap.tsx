@@ -11,6 +11,7 @@ import { UserMarker } from "./markers/UserMarker";
 import { HotspotMarker } from "./markers/HotspotMarker";
 import { UserDrawer } from "./drawers/UserDrawer";
 import { HotspotDrawer } from "./drawers/HotspotDrawer";
+import { SpaceDrawer } from "./drawers/SpaceDrawer";
 import { VibeFilterBar } from "./overlays/VibeFilterBar";
 import { FloatingControls } from "./overlays/FloatingControls";
 import { IntentModal } from "./overlays/IntentModal";
@@ -103,26 +104,7 @@ function MapController({
 import { useOSM } from "@/hooks/useOSM";
 import { OSMMarker } from "./markers/OSMMarker";
 
-function AudioRenderer() {
-  const { incomingStreams, isSpeakerMuted } = useMapContext();
-  
-  return (
-    <div style={{ display: "none" }}>
-      {Object.entries(incomingStreams).map(([userId, stream]) => (
-        <audio
-          key={userId}
-          autoPlay
-          muted={isSpeakerMuted}
-          ref={(audio) => {
-            if (audio && audio.srcObject !== stream) {
-              audio.srcObject = stream;
-            }
-          }}
-        />
-      ))}
-    </div>
-  );
-}
+
 
 function LiveMapContent() {
   const {
@@ -140,6 +122,11 @@ function LiveMapContent() {
     activeRoute,
     connectionFailed,
     myUserId,
+    handle,
+    myAvatarUrl,
+    vibeEmoji,
+    profile,
+    setSelectedUser,
   } = useMapContext();
   
   const [bounds, setBounds] = useState<any>(null);
@@ -171,7 +158,18 @@ function LiveMapContent() {
         originalLng: location.lng,
         lat: location.lat,
         lng: location.lng,
-        raw: null,
+        raw: {
+          user_id: myUserId,
+          username: handle,
+          avatar_url: myAvatarUrl,
+          vibeEmoji: vibeEmoji,
+          lat: location.lat,
+          lng: location.lng,
+          bio: profile?.bio || "",
+          selectedTags: profile?.selectedTags || [],
+          gender: profile?.gender || "",
+          age: profile?.age || "",
+        },
       });
     }
 
@@ -365,9 +363,9 @@ function LiveMapContent() {
       <IntentModal osmPlaces={osmPlaces} />
       <HotspotDrawer />
       <UserDrawer />
+      <SpaceDrawer />
       
-      {/* Audio Renderers */}
-      <AudioRenderer />
+
 
       {/* Toast Notifications */}
       <div className="fixed top-20 left-0 right-0 z-[1000] flex flex-col items-center gap-2 pointer-events-none px-4">
