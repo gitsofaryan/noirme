@@ -47,6 +47,22 @@ export default function RootLayout({
     >
       <body className="h-full bg-white text-zinc-900 selection:bg-zinc-200 overflow-hidden">
         <Script src="https://js.puter.com/v2/" strategy="beforeInteractive" />
+        <Script id="register-sw" strategy="afterInteractive">
+          {`
+            if ('serviceWorker' in navigator) {
+              window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js').then(
+                  function(registration) {
+                    console.log('[noirme] ServiceWorker registered with scope:', registration.scope);
+                  },
+                  function(err) {
+                    console.error('[noirme] ServiceWorker registration failed:', err);
+                  }
+                );
+              });
+            }
+          `}
+        </Script>
         <AuthProvider>
           <LoadingProvider>
             <main className="absolute inset-0 pb-16 overflow-hidden">

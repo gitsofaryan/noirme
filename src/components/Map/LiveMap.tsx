@@ -160,8 +160,23 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): 
   return R * c;
 }
 
-// Creates a circular avatar marker using an img element
+const avatarIconCache = new Map<string, L.DivIcon>();
+
 function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: boolean, zoom: number, userId: string = "default", isWaving: boolean = false) {
+  const key = `${userId}_${avatarUrl}_${vibeEmoji}_${isMe ? "me" : "them"}_${zoom}_${isWaving ? "waving" : "static"}`;
+  if (avatarIconCache.has(key)) {
+    return avatarIconCache.get(key)!;
+  }
+  if (avatarIconCache.size > 1000) {
+    avatarIconCache.clear();
+  }
+  const icon = createAvatarMarkerIconRaw(avatarUrl, vibeEmoji, isMe, zoom, userId, isWaving);
+  avatarIconCache.set(key, icon);
+  return icon;
+}
+
+// Creates a circular avatar marker using an img element
+function createAvatarMarkerIconRaw(avatarUrl: string, vibeEmoji: string, isMe: boolean, zoom: number, userId: string = "default", isWaving: boolean = false) {
   const baseSize = isMe ? 48 : 44;
   // Scale size based on zoom Level (Reference point: zoom 15)
   const scale = Math.max(0.3, Math.min(1.4, Math.pow(1.15, zoom - 15)));
@@ -233,8 +248,23 @@ function createAvatarMarkerIcon(avatarUrl: string, vibeEmoji: string, isMe: bool
   });
 }
 
+const hotspotIconCache = new Map<string, L.DivIcon>();
+
+function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string, zoom: number, hotspotId: string = "default") {
+  const key = `${hotspotId}_${avatarUrl}_${vibeEmoji}_${zoom}`;
+  if (hotspotIconCache.has(key)) {
+    return hotspotIconCache.get(key)!;
+  }
+  if (hotspotIconCache.size > 1000) {
+    hotspotIconCache.clear();
+  }
+  const icon = createHotspotMarkerIconRaw(avatarUrl, vibeEmoji, zoom);
+  hotspotIconCache.set(key, icon);
+  return icon;
+}
+
 // Creates a beautiful pulsing hotspot room marker icon
-function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string, zoom: number) {
+function createHotspotMarkerIconRaw(avatarUrl: string, vibeEmoji: string, zoom: number) {
   const baseSize = 46;
   const scale = Math.max(0.3, Math.min(1.4, Math.pow(1.15, zoom - 15)));
   const size = Math.round(baseSize * scale);
@@ -314,6 +344,61 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string, zoom: num
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2 - 2],
   });
+}
+
+// ── Smooth Coordinates Lerp Interpolator Component ───────────────────────────
+function SmoothMarker({
+  position,
+  icon,
+  eventHandlers,
+  children,
+}: {
+  position: [number, number];
+  icon: L.DivIcon;
+  eventHandlers?: any;
+  children?: React.ReactNode;
+}) {
+  const [currentPos, setCurrentPos] = useState<[number, number]>(position);
+  const targetPosRef = useRef<[number, number]>(position);
+  const startPosRef = useRef<[number, number]>(position);
+  const startTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    // When target position changes, initiate smooth animation loop
+    if (position[0] !== targetPosRef.current[0] || position[1] !== targetPosRef.current[1]) {
+      startPosRef.current = currentPos;
+      targetPosRef.current = position;
+      startTimeRef.current = performance.now();
+
+      let animId: number;
+      const animate = (now: number) => {
+        const elapsed = now - startTimeRef.current;
+        const duration = 400; // 400ms transition time for creamy smooth glide
+        const t = Math.min(1, elapsed / duration);
+        
+        // Easing: ease-out quadratic
+        const ease = t * (2 - t);
+
+        const nextLat = startPosRef.current[0] + (targetPosRef.current[0] - startPosRef.current[0]) * ease;
+        const nextLng = startPosRef.current[1] + (targetPosRef.current[1] - startPosRef.current[1]) * ease;
+        
+        setCurrentPos([nextLat, nextLng]);
+
+        if (t < 1) {
+          animId = requestAnimationFrame(animate);
+        }
+      };
+
+      animId = requestAnimationFrame(animate);
+      return () => cancelAnimationFrame(animId);
+    }
+  }, [position]);
+
+  return (
+    <Marker position={currentPos} icon={icon} eventHandlers={eventHandlers}>
+      {children}
+    </Marker>
+  );
 }
 
 const FILTER_KEYWORDS: Record<string, string[]> = {
@@ -581,8 +666,16 @@ export default function LiveMap() {
     profile?.avatar_url || (user ? getAvatarUrl(user.username) : getAvatarUrl("anon"));
 
   // — Get and watch location with race (IP location + high-accuracy live watchPosition fallback)
+  // Smart geofenced stasis controller clears high-power GPS watch and switches to 2min low-power poll when user is stationary
   useEffect(() => {
     let finished = false;
+    let watchId: number | null = null;
+    let passivePollInterval: ReturnType<typeof setInterval> | null = null;
+    
+    let isStasis = false;
+    let lastMoveTime = Date.now();
+    let lastLatitude: number | null = null;
+    let lastLongitude: number | null = null;
 
     // Fast IP Geolocation fallback so map is never collapsed
     getIPLocation()
@@ -593,7 +686,6 @@ export default function LiveMap() {
           const newLng = ipLoc.lng + offset.lngOffset;
           setLocation((prev) => {
             if (!prev) return { lat: newLat, lng: newLng };
-            // DO NOT overwrite an existing cached or GPS location with an inaccurate IP location!
             return prev;
           });
           setLocStatus("granted");
@@ -622,34 +714,122 @@ export default function LiveMap() {
       { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
     );
 
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        finished = true;
-        const offset = maskLocation ? getStableOffset(pos.coords.latitude, pos.coords.longitude) : { latOffset: 0, lngOffset: 0 };
-        const newLat = pos.coords.latitude + offset.latOffset;
-        const newLng = pos.coords.longitude + offset.lngOffset;
+    const startHighAccuracyWatch = () => {
+      if (watchId !== null) return;
+      if (passivePollInterval !== null) {
+        clearInterval(passivePollInterval);
+        passivePollInterval = null;
+      }
+      isStasis = false;
+      lastMoveTime = Date.now();
 
-        setLocation((prev) => {
-          if (!prev) return { lat: newLat, lng: newLng };
-          const dist = getDistanceKm(prev.lat, prev.lng, newLat, newLng);
-          // Update only if moved more than 3 meters (0.003 km) to filter out GPS drift
-          if (dist > 0.003) {
-            return { lat: newLat, lng: newLng };
-          }
-          return prev;
-        });
-        setLocStatus("granted");
-      },
-      () => {
-        finished = true;
-        // Don't override if IP geolocation already succeeded
-        setLocStatus((prev) => (prev === "granted" ? "granted" : "denied"));
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+      console.log("[noirme] Starting high-power GPS watchPosition driver.");
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          finished = true;
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const offset = maskLocation ? getStableOffset(lat, lng) : { latOffset: 0, lngOffset: 0 };
+          const newLat = lat + offset.latOffset;
+          const newLng = lng + offset.lngOffset;
+
+          setLocation((prev) => {
+            if (!prev) {
+              lastLatitude = lat;
+              lastLongitude = lng;
+              return { lat: newLat, lng: newLng };
+            }
+            
+            const dist = getDistanceKm(prev.lat, prev.lng, newLat, newLng);
+            if (dist > 0.003) {
+              // User is moving! Update coordinates & reset stasis timer
+              lastLatitude = lat;
+              lastLongitude = lng;
+              lastMoveTime = Date.now();
+              return { lat: newLat, lng: newLng };
+            }
+
+            // If user has been stationary for more than 3 minutes, transition to passive battery saver!
+            if (Date.now() - lastMoveTime > 180000 && !isStasis) {
+              console.log("[noirme] User is stationary. Transitioning to low-power stasis GPS poll.");
+              isStasis = true;
+              switchToPassivePoll();
+            }
+
+            return prev;
+          });
+          setLocStatus("granted");
+        },
+        () => {
+          finished = true;
+          setLocStatus((prev) => (prev === "granted" ? "granted" : "denied"));
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    };
+
+    const switchToPassivePoll = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      if (passivePollInterval !== null) return;
+
+      // Poll low-power location every 2 minutes
+      passivePollInterval = setInterval(() => {
+        console.log("[noirme] Low-power stasis GPS check-in.");
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            if (lastLatitude !== null && lastLongitude !== null) {
+              const movedDist = getDistanceKm(lastLatitude, lastLongitude, lat, lng);
+              if (movedDist > 0.005) {
+                // User has started moving! Exit stasis and restore active high-power GPS watch
+                console.log("[noirme] Movement detected during stasis. Waking up high-power GPS watch.");
+                startHighAccuracyWatch();
+                
+                const offset = maskLocation ? getStableOffset(lat, lng) : { latOffset: 0, lngOffset: 0 };
+                setLocation({ lat: lat + offset.latOffset, lng: lng + offset.lngOffset });
+              }
+            } else {
+              lastLatitude = lat;
+              lastLongitude = lng;
+            }
+          },
+          () => {},
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
+      }, 120000);
+    };
+
+    // Initialize with high-accuracy active watch position
+    startHighAccuracyWatch();
+
+    // Listen to user map interactions to wake up from stasis instantly
+    const handleUserWakeup = () => {
+      if (isStasis) {
+        console.log("[noirme] User interaction detected. Waking up high-power GPS watch.");
+        startHighAccuracyWatch();
+      } else {
+        lastMoveTime = Date.now(); // reset timer on click/activity
+      }
+    };
+
+    window.addEventListener("click", handleUserWakeup);
+    window.addEventListener("touchstart", handleUserWakeup);
 
     return () => {
-      navigator.geolocation.clearWatch(watchId);
+      finished = true;
+      window.removeEventListener("click", handleUserWakeup);
+      window.removeEventListener("touchstart", handleUserWakeup);
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      if (passivePollInterval !== null) {
+        clearInterval(passivePollInterval);
+      }
     };
   }, [maskLocation]);
 
@@ -882,14 +1062,6 @@ export default function LiveMap() {
         hotspotRange: profile?.hotspotRange || 15,
       })
     );
-    // Request sync shortly after sending location so we discover peers who are already nearby
-    const syncTimer = setTimeout(() => {
-      const ws2 = socketRef.current;
-      if (ws2 && ws2.readyState === WebSocket.OPEN) {
-        ws2.send(JSON.stringify({ type: "request_sync" }));
-      }
-    }, 500);
-    return () => clearTimeout(syncTimer);
   }, [
     location?.lat,
     location?.lng,
@@ -1198,7 +1370,7 @@ export default function LiveMap() {
           const av = u.avatar_url || getAvatarUrl(u.username || "user");
           const isWaving = activeWaves.some((w) => w.sender_id === u.user_id);
           return (
-            <Marker
+            <SmoothMarker
               key={`user-${u.user_id || idx}`}
               position={[u.lat, u.lng]}
               icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, zoom, u.user_id, isWaving)}
@@ -1215,10 +1387,10 @@ export default function LiveMap() {
         {filteredHotspots.map((hotspot) => {
           const av = hotspot.host_avatar || getAvatarUrl(hotspot.host_username);
           return (
-            <Marker
+            <SmoothMarker
               key={hotspot.id}
               position={[hotspot.lat, hotspot.lng]}
-              icon={createHotspotMarkerIcon(av, hotspot.vibeEmoji || "☕", zoom)}
+              icon={createHotspotMarkerIcon(av, hotspot.vibeEmoji || "☕", zoom, hotspot.id)}
               eventHandlers={{
                 click: () => {
                   setSelectedHotspot(hotspot);

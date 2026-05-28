@@ -175,6 +175,12 @@ async function publishHotspotUpdate() {
 
 // ── Secure Sync & Broadcast Helpers ──────────────────────────────────────────
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  // Fast rectangular bounding-box pre-filter: 0.35 degrees is roughly 38km
+  // If the points are obviously too far, short-circuit immediately to avoid heavy math
+  if (Math.abs(lat1 - lat2) > 0.35 || Math.abs(lon1 - lon2) > 0.35) {
+    return 999999;
+  }
+
   const R = 6371; // Radius of the earth in km
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
@@ -204,8 +210,40 @@ async function sendSync(ws: WebSocket) {
       );
 
       if (nearbyUserIds && nearbyUserIds.length > 0) {
-        const rawUsers = (await redisPub.hMGet("noirme:active_users", nearbyUserIds)) as any[];
-        allUsers = rawUsers.filter(Boolean).map((u: any) => JSON.parse(u));
+        // Verify active user sessions in Redis via transactional pipelining
+        const pipeline = redisPub.multi();
+        nearbyUserIds.forEach((uid) => {
+          pipeline.exists(`noirme:user_session:${uid}`);
+        });
+        const sessionExistsResults = (await pipeline.exec()) as any[];
+
+        const validUserIds: string[] = [];
+        const expiredUserIds: string[] = [];
+
+        sessionExistsResults.forEach((resVal, idx) => {
+          const uid = nearbyUserIds[idx];
+          if (resVal === 1 || resVal === true || String(resVal) === "1") {
+            validUserIds.push(uid);
+          } else {
+            expiredUserIds.push(uid);
+          }
+        });
+
+        // Perform deferred on-the-fly purge of expired ghost coordinates
+        if (expiredUserIds.length > 0) {
+          console.log(`[noirme] Purging ${expiredUserIds.length} expired ghost users from Redis spatial index.`);
+          const purgePipeline = redisPub.multi();
+          expiredUserIds.forEach((uid) => {
+            purgePipeline.zRem("noirme:user_locations", uid);
+            purgePipeline.hDel("noirme:active_users", uid);
+          });
+          await purgePipeline.exec();
+        }
+
+        if (validUserIds.length > 0) {
+          const rawUsers = (await redisPub.hMGet("noirme:active_users", validUserIds)) as any[];
+          allUsers = rawUsers.filter(Boolean).map((u: any) => JSON.parse(u));
+        }
       }
 
       // Geo-spatial query for hotspots within viewer's scan range
@@ -216,8 +254,40 @@ async function sendSync(ws: WebSocket) {
       );
 
       if (nearbyHotspotIds && nearbyHotspotIds.length > 0) {
-        const rawHotspots = (await redisPub.hMGet("noirme:hotspots", nearbyHotspotIds)) as any[];
-        allHotspots = rawHotspots.filter(Boolean).map((h: any) => JSON.parse(h));
+        // Verify active hotspot sessions in Redis via transactional pipelining
+        const pipeline = redisPub.multi();
+        nearbyHotspotIds.forEach((rid) => {
+          pipeline.exists(`noirme:hotspot_session:${rid}`);
+        });
+        const sessionExistsResults = (await pipeline.exec()) as any[];
+
+        const validHotspotIds: string[] = [];
+        const expiredHotspotIds: string[] = [];
+
+        sessionExistsResults.forEach((resVal, idx) => {
+          const rid = nearbyHotspotIds[idx];
+          if (resVal === 1 || resVal === true || String(resVal) === "1") {
+            validHotspotIds.push(rid);
+          } else {
+            expiredHotspotIds.push(rid);
+          }
+        });
+
+        // Perform deferred on-the-fly purge of expired ghost hotspots
+        if (expiredHotspotIds.length > 0) {
+          console.log(`[noirme] Purging ${expiredHotspotIds.length} expired ghost hotspots from Redis spatial index.`);
+          const purgePipeline = redisPub.multi();
+          expiredHotspotIds.forEach((rid) => {
+            purgePipeline.zRem("noirme:hotspot_locations", rid);
+            purgePipeline.hDel("noirme:hotspots", rid);
+          });
+          await purgePipeline.exec();
+        }
+
+        if (validHotspotIds.length > 0) {
+          const rawHotspots = (await redisPub.hMGet("noirme:hotspots", validHotspotIds)) as any[];
+          allHotspots = rawHotspots.filter(Boolean).map((h: any) => JSON.parse(h));
+        }
       }
     } catch (e) {
       console.error("[noirme] Redis geo sync failed, falling back:", e);
@@ -421,6 +491,9 @@ wss.on("connection", async (ws: any) => {
             member: info.user_id,
           });
 
+          // Set temporary session heartbeat key to support self-cleaning spatial indexes
+          await redisPub.set(`noirme:user_session:${info.user_id}`, "active", { EX: 60 });
+
           // Throttle broadcasts to max 1 per 2 seconds per user to avoid flooding
           const now = Date.now();
           const lastTime = lastBroadcastTime.get(info.user_id) || 0;
@@ -443,6 +516,9 @@ wss.on("connection", async (ws: any) => {
             broadcastLocationUpdate(info, ws);
           }
         }
+
+        // Auto-sync this client immediately so their map is always fresh and responsive
+        await sendSync(ws);
 
       } else if (data.type === "create_hotspot") {
         const roomId = `room_${Math.random().toString(36).substring(2, 8)}`;
@@ -484,6 +560,10 @@ wss.on("connection", async (ws: any) => {
             latitude: newHotspot.lat,
             member: roomId,
           });
+
+          // Set temporary hotspot session heartbeat key with custom duration TTL
+          const ttlSecs = Math.max(10, Math.ceil((newHotspot.expires_at - Date.now()) / 1000));
+          await redisPub.set(`noirme:hotspot_session:${roomId}`, "active", { EX: ttlSecs });
 
           await publishHotspotUpdate();
 
@@ -812,6 +892,7 @@ wss.on("connection", async (ws: any) => {
         try {
           await redisPub.hDel("noirme:active_users", info.user_id);
           await redisPub.zRem("noirme:user_locations", info.user_id);
+          await redisPub.del(`noirme:user_session:${info.user_id}`);
           await redisPub.publish(
             "noirme:location_updates",
             JSON.stringify({
