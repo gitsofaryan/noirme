@@ -375,13 +375,13 @@ function SmoothMarker({
         const elapsed = now - startTimeRef.current;
         const duration = 400; // 400ms transition time for creamy smooth glide
         const t = Math.min(1, elapsed / duration);
-        
+
         // Easing: ease-out quadratic
         const ease = t * (2 - t);
 
         const nextLat = startPosRef.current[0] + (targetPosRef.current[0] - startPosRef.current[0]) * ease;
         const nextLng = startPosRef.current[1] + (targetPosRef.current[1] - startPosRef.current[1]) * ease;
-        
+
         setCurrentPos([nextLat, nextLng]);
 
         if (t < 1) {
@@ -671,7 +671,7 @@ export default function LiveMap() {
     let finished = false;
     let watchId: number | null = null;
     let passivePollInterval: ReturnType<typeof setInterval> | null = null;
-    
+
     let isStasis = false;
     let lastMoveTime = Date.now();
     let lastLatitude: number | null = null;
@@ -739,7 +739,7 @@ export default function LiveMap() {
               lastLongitude = lng;
               return { lat: newLat, lng: newLng };
             }
-            
+
             const dist = getDistanceKm(prev.lat, prev.lng, newLat, newLng);
             if (dist > 0.003) {
               // User is moving! Update coordinates & reset stasis timer
@@ -789,7 +789,7 @@ export default function LiveMap() {
                 // User has started moving! Exit stasis and restore active high-power GPS watch
                 console.log("[noirme] Movement detected during stasis. Waking up high-power GPS watch.");
                 startHighAccuracyWatch();
-                
+
                 const offset = maskLocation ? getStableOffset(lat, lng) : { latOffset: 0, lngOffset: 0 };
                 setLocation({ lat: lat + offset.latOffset, lng: lng + offset.lngOffset });
               }
@@ -798,7 +798,7 @@ export default function LiveMap() {
               lastLongitude = lng;
             }
           },
-          () => {},
+          () => { },
           { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
         );
       }, 120000);
@@ -873,7 +873,7 @@ export default function LiveMap() {
         if (!mounted) return;
         setSocketReady(true);
         retryCount = 0; // Reset backoff count on success
-        
+
         const activeWs = ws;
         if (activeWs) {
           activeWs.send(JSON.stringify({ type: "request_sync" }));
@@ -1000,7 +1000,7 @@ export default function LiveMap() {
         if (!mounted) return;
         setSocketReady(false);
         socketRef.current = null;
-        
+
         // Exponential backoff with randomized jitter (+/- 500ms)
         const delay = Math.min(10000, Math.pow(2, retryCount) * 1000) + (Math.random() - 0.5) * 1000;
         console.log(`[noirme] Socket closed. Reconnecting in ${Math.round(delay)}ms...`);
@@ -1325,6 +1325,98 @@ export default function LiveMap() {
   const distanceStr =
     distance !== null ? (distance < 0.1 ? "Here" : `${distance.toFixed(1)} km away`) : "";
 
+  // Group and disperse overlapping coordinates for all map markers
+  const dispersedMarkers = (() => {
+    if (!location) return [];
+
+    const list: Array<{
+      key: string;
+      type: "me" | "user" | "hotspot";
+      originalLat: number;
+      originalLng: number;
+      lat: number;
+      lng: number;
+      raw: any;
+    }> = [];
+
+    // 1. Add 'Me'
+    list.push({
+      key: "me",
+      type: "me",
+      originalLat: location.lat,
+      originalLng: location.lng,
+      lat: location.lat,
+      lng: location.lng,
+      raw: null,
+    });
+
+    // 2. Add Nearby Users
+    filteredUsers.forEach((u, idx) => {
+      list.push({
+        key: `user-${u.user_id || idx}`,
+        type: "user",
+        originalLat: u.lat,
+        originalLng: u.lng,
+        lat: u.lat,
+        lng: u.lng,
+        raw: u,
+      });
+    });
+
+    // 3. Add Hotspots
+    filteredHotspots.forEach((h) => {
+      list.push({
+        key: `hotspot-${h.id}`,
+        type: "hotspot",
+        originalLat: h.lat,
+        originalLng: h.lng,
+        lat: h.lat,
+        lng: h.lng,
+        raw: h,
+      });
+    });
+
+    // Grouping threshold in degrees (approx 10 meters)
+    const GRID_SIZE = 0.00009;
+
+    // Group items that are extremely close
+    const groups: { [key: string]: typeof list } = {};
+    list.forEach((item) => {
+      const gridLat = Math.round(item.originalLat / GRID_SIZE);
+      const gridLng = Math.round(item.originalLng / GRID_SIZE);
+      const groupKey = `${gridLat}_${gridLng}`;
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(item);
+    });
+
+    // Apply dispersion to overlapping groups
+    Object.values(groups).forEach((group) => {
+      const N = group.length;
+      if (N <= 1) return;
+
+      // Base radius of ~18 meters in degrees
+      const baseRadius = 0.00016;
+      // Scale coordinates based on zoom level to stay clear
+      const zoomScale = Math.pow(2, 15 - zoom);
+      const radius = baseRadius * Math.max(0.5, Math.min(2.0, zoomScale));
+
+      group.forEach((item, index) => {
+        const angle = (2 * Math.PI * index) / N;
+        const offsetLat = radius * Math.sin(angle);
+        const cosLat = Math.cos((item.originalLat * Math.PI) / 180);
+        const offsetLng = (radius * Math.cos(angle)) / (cosLat || 1);
+
+        item.lat = item.originalLat + offsetLat;
+        item.lng = item.originalLng + offsetLng;
+      });
+    });
+
+    return list;
+  })();
+
   return (
     // Keep absolute inset-0 but give it padding bottom to avoid drawing behind BottomNav
     <div className="absolute inset-0 pb-16">
@@ -1349,55 +1441,59 @@ export default function LiveMap() {
           setIsInteracting={setIsInteracting}
         />
 
-        {/* Me */}
-        <Marker
-          position={[location.lat, location.lng]}
-          icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, user?.id || "me")}
-        >
-          <Popup className="cloudy-popup">
-            <div className="flex flex-col items-center justify-center p-3 px-5 text-center text-zinc-800">
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-white/60 border border-white/80 shadow-sm flex items-center justify-center mb-1.5">
-                <img src={myAvatarUrl} className="w-full h-full object-cover" alt="you" />
-              </div>
-              <p className="font-black text-sm text-zinc-900 leading-none">Me</p>
-              <p className="text-[9px] font-semibold text-zinc-500/80 mt-1 uppercase tracking-wider">@{user?.username || "you"}</p>
-            </div>
-          </Popup>
-        </Marker>
-
-        {/* Nearby Users */}
-        {filteredUsers.map((u, idx) => {
-          const av = u.avatar_url || getAvatarUrl(u.username || "user");
-          const isWaving = activeWaves.some((w) => w.sender_id === u.user_id);
-          return (
-            <SmoothMarker
-              key={`user-${u.user_id || idx}`}
-              position={[u.lat, u.lng]}
-              icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, zoom, u.user_id, isWaving)}
-              eventHandlers={{
-                click: () => {
-                  setSelectedUser(u);
-                },
-              }}
-            />
-          );
-        })}
-
-        {/* Hotspots */}
-        {filteredHotspots.map((hotspot) => {
-          const av = hotspot.host_avatar || getAvatarUrl(hotspot.host_username);
-          return (
-            <SmoothMarker
-              key={hotspot.id}
-              position={[hotspot.lat, hotspot.lng]}
-              icon={createHotspotMarkerIcon(av, hotspot.vibeEmoji || "☕", zoom, hotspot.id)}
-              eventHandlers={{
-                click: () => {
-                  setSelectedHotspot(hotspot);
-                },
-              }}
-            />
-          );
+        {/* Render dispersed map markers dynamically */}
+        {dispersedMarkers.map((item) => {
+          if (item.type === "me") {
+            return (
+              <Marker
+                key={item.key}
+                position={[item.lat, item.lng]}
+                icon={createAvatarMarkerIcon(myAvatarUrl, vibeEmoji, true, zoom, user?.id || "me")}
+              >
+                <Popup className="cloudy-popup">
+                  <div className="flex flex-col items-center justify-center p-3 px-5 text-center text-zinc-800">
+                    <div className="w-12 h-12 rounded-full overflow-hidden bg-white/60 border border-white/80 shadow-sm flex items-center justify-center mb-1.5">
+                      <img src={myAvatarUrl} className="w-full h-full object-cover" alt="you" />
+                    </div>
+                    <p className="font-black text-sm text-zinc-900 leading-none">Me</p>
+                    <p className="text-[9px] font-semibold text-zinc-500/80 mt-1 uppercase tracking-wider">@{user?.username || "you"}</p>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          } else if (item.type === "user") {
+            const u = item.raw;
+            const av = u.avatar_url || getAvatarUrl(u.username || "user");
+            const isWaving = activeWaves.some((w) => w.sender_id === u.user_id);
+            return (
+              <SmoothMarker
+                key={item.key}
+                position={[item.lat, item.lng]}
+                icon={createAvatarMarkerIcon(av, u.vibeEmoji || "🙂", false, zoom, u.user_id, isWaving)}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedUser(u);
+                  },
+                }}
+              />
+            );
+          } else if (item.type === "hotspot") {
+            const hotspot = item.raw;
+            const av = hotspot.host_avatar || getAvatarUrl(hotspot.host_username);
+            return (
+              <SmoothMarker
+                key={item.key}
+                position={[item.lat, item.lng]}
+                icon={createHotspotMarkerIcon(av, hotspot.vibeEmoji || "☕", zoom, hotspot.id)}
+                eventHandlers={{
+                  click: () => {
+                    setSelectedHotspot(hotspot);
+                  },
+                }}
+              />
+            );
+          }
+          return null;
         })}
       </MapContainer>
 
@@ -1468,37 +1564,37 @@ export default function LiveMap() {
                       onClick={() => setShowNotifDropdown(false)}
                     />
                     <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-zinc-200 shadow-xl overflow-hidden"
-                  >
-                    <div className="px-4 py-3 border-b border-zinc-100 flex justify-between items-center">
-                      <span className="text-xs font-bold text-zinc-900 uppercase tracking-tight">Recent Activity</span>
-                      <button
-                        onClick={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
-                        className="text-[10px] text-zinc-400 font-bold hover:text-zinc-900"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                    <div className="max-h-60 overflow-y-auto py-1">
-                      {notifications.length === 0 ? (
-                        <div className="px-4 py-8 text-center">
-                          <p className="text-[11px] font-medium text-zinc-400">No recent activity</p>
-                        </div>
-                      ) : (
-                        notifications.map((n) => (
-                          <div key={n.id} className="px-4 py-3 hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0">
-                            <p className="text-[11px] font-medium text-zinc-800 leading-tight">{n.text}</p>
-                            <p className="text-[9px] text-zinc-400 mt-1 uppercase font-bold tracking-tighter">
-                              {new Date(n.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-zinc-200 shadow-xl overflow-hidden"
+                    >
+                      <div className="px-4 py-3 border-b border-zinc-100 flex justify-between items-center">
+                        <span className="text-xs font-bold text-zinc-900 uppercase tracking-tight">Recent Activity</span>
+                        <button
+                          onClick={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
+                          className="text-[10px] text-zinc-400 font-bold hover:text-zinc-900"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto py-1">
+                        {notifications.length === 0 ? (
+                          <div className="px-4 py-8 text-center">
+                            <p className="text-[11px] font-medium text-zinc-400">No recent activity</p>
                           </div>
-                        ))
-                      )}
-                    </div>
-                  </motion.div>
+                        ) : (
+                          notifications.map((n) => (
+                            <div key={n.id} className="px-4 py-3 hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0">
+                              <p className="text-[11px] font-medium text-zinc-800 leading-tight">{n.text}</p>
+                              <p className="text-[9px] text-zinc-400 mt-1 uppercase font-bold tracking-tighter">
+                                {new Date(n.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </motion.div>
                   </>
                 )}
               </AnimatePresence>
