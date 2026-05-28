@@ -104,11 +104,10 @@ export function RouteHUD() {
                 <button
                   key={mode}
                   onClick={() => handleModeClick(mode)}
-                  className={`flex-1 py-2.5 rounded-xl border text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer ${
-                    isActive
+                  className={`flex-1 py-2.5 rounded-xl border text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer ${isActive
                       ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
                       : "bg-zinc-100 border-zinc-200 text-zinc-600 hover:text-zinc-900"
-                  }`}
+                    }`}
                 >
                   <Icon size={12} />
                   <span>{label}</span>
