@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { MapContainer, TileLayer, useMap, Polyline } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { Compass } from "lucide-react";
 
-import { MapProvider, useMapContext } from "./MapProvider";
+import { useMapContext } from "./MapProvider";
 import { UserMarker } from "./markers/UserMarker";
 import { HotspotMarker } from "./markers/HotspotMarker";
 import { UserDrawer } from "./drawers/UserDrawer";
@@ -103,6 +103,7 @@ function LiveMapContent() {
     filteredUsers,
     filteredHotspots,
     activeRoute,
+    connectionFailed,
   } = useMapContext();
 
   if (!location) {
@@ -122,7 +123,7 @@ function LiveMapContent() {
   }
 
   // Calculate dispersion of markers to prevent overlapping
-  const dispersedMarkers = (() => {
+  const dispersedMarkers = useMemo(() => {
     const list: Array<{
       key: string;
       type: "me" | "user" | "hotspot";
@@ -203,10 +204,30 @@ function LiveMapContent() {
     });
 
     return list;
-  })();
+  }, [filteredUsers, filteredHotspots, location.lat, location.lng, zoom]);
 
   return (
     <div className="absolute inset-0 pb-16">
+      <AnimatePresence>
+        {connectionFailed && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-4 left-4 right-4 z-[999] md:max-w-md md:mx-auto bg-amber-50/95 backdrop-blur-md border border-amber-200 rounded-2xl p-3.5 shadow-md flex items-center gap-3"
+          >
+            <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-800 font-bold">
+              ⚠️
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xs font-bold text-amber-900 leading-tight">Connection Issue</h4>
+              <p className="text-[10px] text-amber-700/90 font-medium mt-0.5 leading-normal">
+                Reconnecting to live sync server. Check your internet connection.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <MapContainer
         center={[location.lat, location.lng]}
         zoom={15}
@@ -290,8 +311,8 @@ function LiveMapContent() {
               initial={{ y: -20, opacity: 0, scale: 0.9 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: -20, opacity: 0, scale: 0.9 }}
-              className={`px-5 py-3 rounded-full shadow-lg text-sm font-bold flex items-center gap-2 pointer-events-auto ${
-                toast.type === "wave" ? "bg-emerald-500 text-white" : "bg-zinc-900 text-white"
+              className={`px-5 py-3 rounded-full shadow-xl text-sm font-bold flex items-center gap-2 pointer-events-auto ${
+                toast.type === "wave" ? "bg-emerald-500 text-white" : "bg-white text-zinc-900 border border-zinc-200"
               }`}
             >
               {toast.message}
@@ -304,9 +325,5 @@ function LiveMapContent() {
 }
 
 export default function LiveMap() {
-  return (
-    <MapProvider>
-      <LiveMapContent />
-    </MapProvider>
-  );
+  return <LiveMapContent />;
 }

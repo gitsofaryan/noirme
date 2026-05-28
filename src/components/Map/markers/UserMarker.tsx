@@ -110,8 +110,9 @@ function createAvatarMarkerIcon(
   if (avatarIconCache.has(key)) {
     return avatarIconCache.get(key)!;
   }
-  if (avatarIconCache.size > 1000) {
-    avatarIconCache.clear();
+  if (avatarIconCache.size >= 800) {
+    const keysToDelete = Array.from(avatarIconCache.keys()).slice(0, 200);
+    keysToDelete.forEach((k) => avatarIconCache.delete(k));
   }
   const icon = createAvatarMarkerIconRaw(avatarUrl, vibeEmoji, isMe, zoom, userId, isWaving);
   avatarIconCache.set(key, icon);
@@ -135,6 +136,7 @@ export function SmoothMarker({
   const targetPosRef = useRef<[number, number]>(position);
   const startPosRef = useRef<[number, number]>(position);
   const startTimeRef = useRef<number>(0);
+  const animIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (position[0] !== targetPosRef.current[0] || position[1] !== targetPosRef.current[1]) {
@@ -142,7 +144,10 @@ export function SmoothMarker({
       targetPosRef.current = position;
       startTimeRef.current = performance.now();
 
-      let animId: number;
+      if (animIdRef.current) {
+        cancelAnimationFrame(animIdRef.current);
+      }
+
       const animate = (now: number) => {
         const elapsed = now - startTimeRef.current;
         const duration = 400; // 400ms transition time
@@ -155,14 +160,24 @@ export function SmoothMarker({
         setCurrentPos([nextLat, nextLng]);
 
         if (t < 1) {
-          animId = requestAnimationFrame(animate);
+          animIdRef.current = requestAnimationFrame(animate);
+        } else {
+          animIdRef.current = null;
         }
       };
 
-      animId = requestAnimationFrame(animate);
-      return () => cancelAnimationFrame(animId);
+      animIdRef.current = requestAnimationFrame(animate);
     }
   }, [position]);
+
+  // Clean up animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (animIdRef.current) {
+        cancelAnimationFrame(animIdRef.current);
+      }
+    };
+  }, []);
 
   return (
     <Marker position={currentPos} icon={icon} eventHandlers={eventHandlers} zIndexOffset={zIndexOffset}>

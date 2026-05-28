@@ -12,8 +12,8 @@ function createHotspotMarkerIconRaw(avatarUrl: string, vibeEmoji: string, zoom: 
   const scale = Math.max(0.3, Math.min(1.4, Math.pow(1.15, zoom - 15)));
   const size = Math.round(baseSize * scale);
   const coreSize = Math.round(36 * scale);
-  const auraSize = Math.round(52 * scale);
-  const rotatingRingSize = Math.round(44 * scale);
+  const auraSize = Math.round(zoom <= 13 ? 60 * scale : 52 * scale);
+  const rotatingRingSize = Math.round(zoom <= 13 ? 50 * scale : 44 * scale);
   const emojiSize = Math.round(18 * scale);
 
   return L.divIcon({
@@ -26,11 +26,22 @@ function createHotspotMarkerIconRaw(avatarUrl: string, vibeEmoji: string, zoom: 
           width:${auraSize}px;
           height:${auraSize}px;
           border-radius:50%;
-          background: radial-gradient(circle, rgba(255,235,59,0.3) 0%, rgba(255,193,7,0) 70%);
+          background: radial-gradient(circle, rgba(255,235,59,0.4) 0%, rgba(255,193,7,0) 70%);
           animation: glow 2.5s infinite alternate ease-in-out;
           z-index: 0;
         "></div>
         
+        <!-- Outer pulse ring for low-zoom distinction -->
+        <div style="
+          position:absolute;
+          width:${rotatingRingSize}px;
+          height:${rotatingRingSize}px;
+          border-radius:50%;
+          box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7);
+          animation: pulse-ring 2s infinite ease-in-out;
+          z-index: 1;
+        "></div>
+
         <!-- Rotating ring -->
         <div style="
           position:absolute;
@@ -81,6 +92,11 @@ function createHotspotMarkerIconRaw(avatarUrl: string, vibeEmoji: string, zoom: 
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        @keyframes pulse-ring {
+          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
+          70% { transform: scale(1.2); box-shadow: 0 0 0 12px rgba(255, 193, 7, 0); }
+          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+        }
       </style>
     `,
     iconSize: [size, size],
@@ -94,8 +110,9 @@ function createHotspotMarkerIcon(avatarUrl: string, vibeEmoji: string, zoom: num
   if (hotspotIconCache.has(key)) {
     return hotspotIconCache.get(key)!;
   }
-  if (hotspotIconCache.size > 1000) {
-    hotspotIconCache.clear();
+  if (hotspotIconCache.size >= 800) {
+    const keysToDelete = Array.from(hotspotIconCache.keys()).slice(0, 200);
+    keysToDelete.forEach((k) => hotspotIconCache.delete(k));
   }
   const icon = createHotspotMarkerIconRaw(avatarUrl, vibeEmoji, zoom);
   hotspotIconCache.set(key, icon);

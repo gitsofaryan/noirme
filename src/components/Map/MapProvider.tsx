@@ -1,10 +1,20 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useMemo } from "react";
 import { useAuth, getAvatarUrl, UserProfile } from "@/hooks/useAuth";
-import { useGeolocation } from "@/hooks/useGeolocation";
+import { useGeolocation, getDistanceKm } from "@/hooks/useGeolocation";
 import { useSocket } from "@/hooks/useSocket";
 import { fetchOSRMRoute, RouteData, TransportMode } from "@/lib/routing";
+
+export interface DirectMessage {
+  id: string;
+  sender_id: string;
+  sender_username: string;
+  sender_avatar: string;
+  recipient_id: string;
+  text: string;
+  timestamp: number;
+}
 
 interface MapContextType {
   // Auth identity
@@ -25,6 +35,7 @@ interface MapContextType {
   socketReady: boolean;
   connectionState: "connecting" | "connected" | "disconnected" | "reconnecting";
   offlineMessages: any[];
+  connectionFailed: boolean;
 
   // Map state
   zoom: number;
@@ -80,6 +91,7 @@ interface MapContextType {
   // Filtered lists
   filteredUsers: any[];
   filteredHotspots: any[];
+  activeUsers: any[];
 
 
   // Routing state
@@ -90,6 +102,20 @@ interface MapContextType {
   setRoutingTarget: (target: { lat: number; lng: number; name: string } | null) => void;
   isLoadingRoute: boolean;
   clearActiveRoute: () => void;
+
+  // Chat/DM state
+  chatRequests: any[];
+  friends: any[];
+  chatMessages: DirectMessage[];
+  peerTyping: Record<string, boolean>;
+  activeChatUser: any | null;
+  setActiveChatUser: (u: any | null) => void;
+  sendChatRequest: (targetUserId: string) => void;
+  respondChatRequest: (senderId: string, status: "accepted" | "rejected") => void;
+  sendDirectMessage: (text: string) => void;
+  sendTypingState: (isTyping: boolean) => void;
+  requestDMHistory: (targetUserId: string) => void;
+  isLoadingHistory: boolean;
 }
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
@@ -179,7 +205,13 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
 
   const addToast = (message: string, type: "default" | "wave" = "default") => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => {
+      const next = [...prev, { id, message, type }];
+      if (next.length > 3) {
+        return next.slice(-3);
+      }
+      return next;
+    });
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
@@ -207,6 +239,67 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [intents, setIntents] = useState<any[]>([]);
 
+  // Chat states
+  const [chatRequests, setChatRequests] = useState<any[]>([]);
+  const [activeChatUser, _setActiveChatUser] = useState<any | null>(null);
+  const activeChatUserRef = useRef<any | null>(null);
+  const setActiveChatUser = (val: any) => {
+    activeChatUserRef.current = val;
+    _setActiveChatUser(val);
+  };
+  const [chatMessages, setChatMessages] = useState<DirectMessage[]>([]);
+  const [peerTyping, setPeerTyping] = useState<Record<string, boolean>>({});
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Automatically load DM history from local Puter cache and request fresh history from WS when activeChatUser changes
+  useEffect(() => {
+    if (!activeChatUser) {
+      setChatMessages([]);
+      setIsLoadingHistory(false);
+      return;
+    }
+
+    setIsLoadingHistory(true);
+    const targetUserId = activeChatUser.user_id;
+
+    // 1. Fetch from Puter KV cache immediately to avoid empty blank screen
+    const convoId = [myUserId, targetUserId].sort().join(":");
+    if (typeof window !== "undefined" && window.puter) {
+      window.puter.kv.get(`chat_cache_${convoId}`).then((raw: any) => {
+        if (raw && activeChatUserRef.current?.user_id === targetUserId) {
+          try {
+            const cached = JSON.parse(raw);
+            setChatMessages(cached);
+          } catch (e) {}
+        }
+      }).catch(() => {});
+    }
+
+    // 2. Request fresh DM history from the server
+    socket.requestDMHistory(targetUserId);
+  }, [activeChatUser, myUserId]);
+
+  const friends = useMemo(() => {
+    return chatRequests
+      .filter((r) => r.status === "accepted")
+      .map((r) => {
+        const friendId = r.sender_id === myUserId ? r.target_id : r.sender_id;
+        const latestInfo = activeUsers.find((u) => u.user_id === friendId);
+        return {
+          user_id: friendId,
+          username: r.sender_id === myUserId ? (latestInfo?.username || r.target_id) : r.sender_username,
+          avatar_url: r.sender_id === myUserId ? (latestInfo?.avatar_url || "") : r.sender_avatar,
+          vibeEmoji: latestInfo?.vibeEmoji || "☕",
+          bio: latestInfo?.bio || "",
+          selectedTags: latestInfo?.selectedTags || [],
+          lat: latestInfo?.lat,
+          lng: latestInfo?.lng,
+          last_seen: latestInfo?.last_seen,
+          status: latestInfo?.status || "active",
+        };
+      });
+  }, [chatRequests, activeUsers, myUserId]);
+
 
   // Routing state
   const [activeRoute, setActiveRoute] = useState<RouteData | null>(null);
@@ -219,10 +312,26 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     setRoutingTarget(null);
   };
 
+  const lastFetchedLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+
   useEffect(() => {
     if (!location || !routingTarget) {
       setActiveRoute(null);
+      lastFetchedLocationRef.current = null;
       return;
+    }
+
+    // Debounce location updates: only re-fetch route if user moved >50m (0.05km)
+    if (lastFetchedLocationRef.current && activeRoute) {
+      const movedDist = getDistanceKm(
+        location.lat,
+        location.lng,
+        lastFetchedLocationRef.current.lat,
+        lastFetchedLocationRef.current.lng
+      );
+      if (movedDist < 0.05) {
+        return;
+      }
     }
 
     let active = true;
@@ -231,6 +340,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
       .then((data) => {
         if (active) {
           setActiveRoute(data);
+          lastFetchedLocationRef.current = { lat: location.lat, lng: location.lng };
           setIsLoadingRoute(false);
         }
       })
@@ -386,6 +496,90 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     onUserDisconnected: (msg) => {
       setActiveUsers((prev) => prev.filter((u) => u.user_id !== msg.user_id));
     },
+    onChatRequestReceived: (msg) => {
+      addToast(`💬 Chat request from @${msg.request.sender_username}!`, "default");
+      setNotifications((prev) => [
+        {
+          id: Math.random().toString(36).substring(7),
+          text: `@${msg.request.sender_username} wants to connect with you`,
+          time: Date.now(),
+          read: false,
+        },
+        ...prev,
+      ].slice(0, 5));
+      setChatRequests((prev) => {
+        const filtered = prev.filter((r) => r.sender_id !== msg.request.sender_id || r.target_id !== msg.request.target_id);
+        return [...filtered, msg.request];
+      });
+    },
+    onChatRequestResponded: (msg) => {
+      const isAccepted = msg.request.status === "accepted";
+      const otherUser = msg.request.sender_id === myUserId ? msg.request.target_id : msg.request.sender_id;
+      const otherInfo = activeUsers.find((u) => u.user_id === otherUser);
+      const otherHandle = otherInfo?.username || "Someone";
+      
+      if (isAccepted) {
+        addToast(`✅ Connected with @${otherHandle}! You can now chat.`, "default");
+      } else {
+        addToast(`❌ Chat request to @${otherHandle} was declined.`, "default");
+      }
+
+      setChatRequests((prev) => {
+        const filtered = prev.filter((r) => r.sender_id !== msg.request.sender_id || r.target_id !== msg.request.target_id);
+        return [...filtered, msg.request];
+      });
+    },
+    onNewDirectMessage: (msg) => {
+      if (activeChatUserRef.current && (msg.message.sender_id === activeChatUserRef.current.user_id || msg.message.recipient_id === activeChatUserRef.current.user_id)) {
+        setChatMessages((prev) => {
+          if (prev.some((m) => m.id === msg.message.id)) return prev;
+          const newMsgs = [...prev, msg.message];
+          const convoId = [myUserId, activeChatUserRef.current.user_id].sort().join(":");
+          if (typeof window !== "undefined" && window.puter) {
+            const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+            const filtered = newMsgs.filter((m) => m.timestamp > dayAgo);
+            window.puter.kv.set(`chat_cache_${convoId}`, JSON.stringify(filtered)).catch(() => {});
+          }
+          return newMsgs;
+        });
+      } else {
+        if (msg.message.sender_id !== myUserId) {
+          addToast(`✉️ New message from @${msg.message.sender_username}: "${msg.message.text.substring(0, 20)}${msg.message.text.length > 20 ? "..." : ""}"`, "default");
+        }
+        if (typeof window !== "undefined" && window.puter) {
+          const otherUserId = msg.message.sender_id === myUserId ? msg.message.recipient_id : msg.message.sender_id;
+          const convoId = [myUserId, otherUserId].sort().join(":");
+          window.puter.kv.get(`chat_cache_${convoId}`).then((raw: any) => {
+            let list = raw ? JSON.parse(raw) : [];
+            if (!list.some((m: any) => m.id === msg.message.id)) {
+              list.push(msg.message);
+              const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+              window.puter.kv.set(`chat_cache_${convoId}`, JSON.stringify(list.filter((m: any) => m.timestamp > dayAgo))).catch(() => {});
+            }
+          }).catch(() => {});
+        }
+      }
+    },
+    onDMHistory: (msg) => {
+      if (activeChatUserRef.current && msg.target_user_id === activeChatUserRef.current.user_id) {
+        setChatMessages(msg.messages);
+        setIsLoadingHistory(false);
+        const convoId = [myUserId, activeChatUserRef.current.user_id].sort().join(":");
+        if (typeof window !== "undefined" && window.puter) {
+          const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+          window.puter.kv.set(`chat_cache_${convoId}`, JSON.stringify(msg.messages.filter((m: any) => m.timestamp > dayAgo))).catch(() => {});
+        }
+      }
+    },
+    onTypingIndicator: (msg) => {
+      setPeerTyping((prev) => ({
+        ...prev,
+        [msg.sender_id]: msg.is_typing,
+      }));
+    },
+    onChatsList: (msg) => {
+      setChatRequests(msg.requests || []);
+    },
   });
 
   // Action methods
@@ -441,6 +635,51 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     setSelectedHotspot(null);
   };
 
+  // Load DM history on selecting activeChatUser
+  useEffect(() => {
+    if (!activeChatUser) {
+      setChatMessages([]);
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.puter) {
+      const convoId = [myUserId, activeChatUser.user_id].sort().join(":");
+      window.puter.kv.get(`chat_cache_${convoId}`)
+        .then((raw: string) => {
+          if (raw) {
+            const msgs = JSON.parse(raw);
+            const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+            setChatMessages(msgs.filter((m: any) => m.timestamp > dayAgo));
+          }
+        })
+        .catch((err: any) => console.warn("Puter KV load failed:", err));
+    }
+
+    socket.requestDMHistory(activeChatUser.user_id);
+  }, [activeChatUser?.user_id]);
+
+  const sendChatRequest = (targetUserId: string) => {
+    socket.sendChatRequest(targetUserId);
+  };
+
+  const respondChatRequest = (senderId: string, status: "accepted" | "rejected") => {
+    socket.respondChatRequest(senderId, status);
+  };
+
+  const sendDirectMessage = (text: string) => {
+    if (!activeChatUser) return;
+    socket.sendDirectMessage(activeChatUser.user_id, text);
+  };
+
+  const sendTypingState = (isTyping: boolean) => {
+    if (!activeChatUser) return;
+    socket.sendTypingState(activeChatUser.user_id, isTyping);
+  };
+
+  const requestDMHistory = (targetUserId: string) => {
+    socket.requestDMHistory(targetUserId);
+  };
+
   const refreshRadar = () => {
     setFollowUser(true);
     setRecenterTrigger((t) => t + 1);
@@ -449,20 +688,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Helper distance calculator
-  function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // Radius of Earth in km
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
+
 
   const FILTER_KEYWORDS: Record<string, string[]> = {
     cafe: ["coffee", "chai", "boba", "tea", "ramen", "food", "eat", "matcha", "latte", "café", "cafe", "brunch", "lunch", "dinner", "cook", "☕", "🍵", "🧋", "🍜", "🍕"],
@@ -504,103 +730,174 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   // Filter lists based on user settings and ranges
   const radarRadius = profile?.radarRange || 15;
 
-  const filteredUsers = activeUsers.filter((u) => {
+  const filteredUsers = useMemo(() => {
     const blockedIds = [...(profile?.blockedUsers || []), ...localBlocks];
-    const isBlocked = blockedIds.includes(u.user_id) || (u.blockedUsers || []).includes(myUserId);
-    if (!location) return false;
-    const isWithinRange = getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= radarRadius;
-    const isMatchesFilter = matchesUserFilter(u, selectedFilter);
-    return !isBlocked && isWithinRange && isMatchesFilter;
-  });
+    if (!location) return [];
+    return activeUsers.filter((u) => {
+      const isBlocked = blockedIds.includes(u.user_id) || (u.blockedUsers || []).includes(myUserId);
+      const isWithinRange = getDistanceKm(location.lat, location.lng, u.lat, u.lng) <= radarRadius;
+      const isMatchesFilter = matchesUserFilter(u, selectedFilter);
+      return !isBlocked && isWithinRange && isMatchesFilter;
+    });
+  }, [activeUsers, profile?.blockedUsers, localBlocks, location, radarRadius, selectedFilter, myUserId]);
 
-  const filteredHotspots = intents.filter((h) => {
+  const filteredHotspots = useMemo(() => {
     const blockedIds = [...(profile?.blockedUsers || []), ...localBlocks];
-    const isBlocked = blockedIds.includes(h.host_id);
-    if (!location) return false;
-    const isWithinRange =
-      getDistanceKm(location.lat, location.lng, h.lat, h.lng) <= radarRadius &&
-      getDistanceKm(location.lat, location.lng, h.lat, h.lng) <= (h.hotspotRange || 15);
-    const isNotExpired = h.expires_at > Date.now();
-    const isMatchesFilter = matchesFilter(h, selectedFilter);
-    return !isBlocked && isWithinRange && isNotExpired && isMatchesFilter;
-  });
+    if (!location) return [];
+    return intents.filter((h) => {
+      const isBlocked = blockedIds.includes(h.host_id);
+      const dist = getDistanceKm(location.lat, location.lng, h.lat, h.lng);
+      const isWithinRange = dist <= radarRadius && dist <= (h.hotspotRange || 15);
+      const isNotExpired = h.expires_at > Date.now();
+      const isMatchesFilter = matchesFilter(h, selectedFilter);
+      return !isBlocked && isWithinRange && isNotExpired && isMatchesFilter;
+    });
+  }, [intents, profile?.blockedUsers, localBlocks, location, radarRadius, selectedFilter]);
+
+  const contextValue = useMemo(() => ({
+    myUserId,
+    handle,
+    vibeEmoji,
+    myAvatarUrl,
+    localBlocks,
+
+    location,
+    locStatus,
+    isStasis,
+    accuracy,
+    refreshRadar,
+
+    socketReady: socket.socketReady,
+    connectionState: socket.connectionState,
+    offlineMessages: socket.offlineMessages,
+    connectionFailed: socket.connectionFailed,
+
+    zoom,
+    setZoom,
+    recenterTrigger,
+    followUser,
+    setFollowUser,
+    isInteracting,
+    setIsInteracting,
+
+    selectedFilter,
+    setSelectedFilter,
+
+    selectedUser,
+    setSelectedUser,
+    selectedHotspot,
+    setSelectedHotspot,
+
+    showIntentModal,
+    setShowIntentModal,
+    intentText,
+    setIntentText,
+    customHotspotRange,
+    setCustomHotspotRange,
+
+    hasWaved,
+    setHasWaved,
+    confirmBlock,
+    setConfirmBlock,
+
+    toasts,
+    addToast,
+    notifications,
+    setNotifications,
+    showNotifDropdown,
+    setShowNotifDropdown,
+    activeWaves,
+
+    handleWave,
+    handleBlock,
+    postIntent,
+    requestJoin,
+    respondRequest,
+    sendMessage,
+    leaveHotspot,
+
+    chatRequests,
+    friends,
+    chatMessages,
+    peerTyping,
+    activeChatUser,
+    setActiveChatUser,
+    sendChatRequest,
+    respondChatRequest,
+    sendDirectMessage,
+    sendTypingState,
+    requestDMHistory,
+    isLoadingHistory,
+
+    filteredUsers,
+    filteredHotspots,
+    activeUsers,
+
+    activeRoute,
+    activeRouteMode,
+    setActiveRouteMode,
+    routingTarget,
+    setRoutingTarget,
+    isLoadingRoute,
+    clearActiveRoute,
+  }), [
+    myUserId,
+    handle,
+    vibeEmoji,
+    myAvatarUrl,
+    localBlocks,
+
+    location,
+    locStatus,
+    isStasis,
+    accuracy,
+
+    socket.socketReady,
+    socket.connectionState,
+    socket.offlineMessages,
+    socket.connectionFailed,
+
+    zoom,
+    recenterTrigger,
+    followUser,
+    isInteracting,
+
+    selectedFilter,
+
+    selectedUser,
+    selectedHotspot,
+
+    showIntentModal,
+    intentText,
+    customHotspotRange,
+
+    hasWaved,
+    confirmBlock,
+
+    toasts,
+    notifications,
+    showNotifDropdown,
+    activeWaves,
+
+    chatRequests,
+    friends,
+    chatMessages,
+    peerTyping,
+    activeChatUser,
+    isLoadingHistory,
+
+    filteredUsers,
+    filteredHotspots,
+    activeUsers,
+
+    activeRoute,
+    activeRouteMode,
+    routingTarget,
+    isLoadingRoute,
+  ]);
 
   return (
-    <MapContext.Provider
-      value={{
-        myUserId,
-        handle,
-        vibeEmoji,
-        myAvatarUrl,
-        localBlocks,
-
-        location,
-        locStatus,
-        isStasis,
-        accuracy,
-        refreshRadar,
-
-        socketReady: socket.socketReady,
-        connectionState: socket.connectionState,
-        offlineMessages: socket.offlineMessages,
-
-        zoom,
-        setZoom,
-        recenterTrigger,
-        followUser,
-        setFollowUser,
-        isInteracting,
-        setIsInteracting,
-
-        selectedFilter,
-        setSelectedFilter,
-
-        selectedUser,
-        setSelectedUser,
-        selectedHotspot,
-        setSelectedHotspot,
-
-        showIntentModal,
-        setShowIntentModal,
-        intentText,
-        setIntentText,
-        customHotspotRange,
-        setCustomHotspotRange,
-
-        hasWaved,
-        setHasWaved,
-        confirmBlock,
-        setConfirmBlock,
-
-        toasts,
-        addToast,
-        notifications,
-        setNotifications,
-        showNotifDropdown,
-        setShowNotifDropdown,
-        activeWaves,
-
-        handleWave,
-        handleBlock,
-        postIntent,
-        requestJoin,
-        respondRequest,
-        sendMessage,
-        leaveHotspot,
-
-        filteredUsers,
-        filteredHotspots,
-
-
-        activeRoute,
-        activeRouteMode,
-        setActiveRouteMode,
-        routingTarget,
-        setRoutingTarget,
-        isLoadingRoute,
-        clearActiveRoute,
-      }}
-    >
+    <MapContext.Provider value={contextValue}>
       {children}
     </MapContext.Provider>
   );
