@@ -6,16 +6,10 @@ import { useGeolocation, getDistanceKm } from "@/hooks/useGeolocation";
 import { useSocket } from "@/hooks/useSocket";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { fetchOSRMRoute, RouteData, TransportMode } from "@/lib/routing";
+import { globalEventBus } from "@/lib/eventBus";
+import { ChatProvider, DirectMessage } from "./ChatProvider";
+export { SocialContext, DMContext, useSocialContext, useDMContext, type SocialContextType, type DMContextType } from "./ChatProvider";
 
-export interface DirectMessage {
-  id: string;
-  sender_id: string;
-  sender_username: string;
-  sender_avatar: string;
-  recipient_id: string;
-  text: string;
-  timestamp: number;
-}
 
 interface MapContextType {
   // Auth identity
@@ -137,28 +131,7 @@ interface MapContextType {
   profile: any;
 }
 
-interface SocialContextType {
-  chatRequests: any[];
-  friends: any[];
-  sendChatRequest: (targetUserId: string) => void;
-  respondChatRequest: (senderId: string, status: "accepted" | "rejected") => void;
-}
-
-interface DMContextType {
-  chatMessages: DirectMessage[];
-  peerTyping: Record<string, boolean>;
-  activeChatUser: any | null;
-  setActiveChatUser: (u: any | null) => void;
-  sendDirectMessage: (text: string) => void;
-  sendTypingState: (isTyping: boolean) => void;
-  requestDMHistory: (targetUserId: string) => void;
-  isLoadingHistory: boolean;
-  unreadMessagesCount: number;
-}
-
 const MapContext = createContext<MapContextType | undefined>(undefined);
-const SocialContext = createContext<SocialContextType | undefined>(undefined);
-const DMContext = createContext<DMContextType | undefined>(undefined);
 
 export function MapProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, user, profile, blockUser } = useAuth();
@@ -308,183 +281,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [intents, setIntents] = useState<any[]>([]);
 
-  // Chat states
-  const [chatRequests, setChatRequests] = useState<any[]>([]);
-  const chatRequestsRef = useRef<any[]>([]);
-  useEffect(() => {
-    chatRequestsRef.current = chatRequests;
-  }, [chatRequests]);
-  const [activeChatUser, _setActiveChatUser] = useState<any | null>(null);
-  const activeChatUserRef = useRef<any | null>(null);
-  const setActiveChatUser = (val: any) => {
-    activeChatUserRef.current = val;
-    _setActiveChatUser(val);
-  };
-  const [chatMessages, setChatMessages] = useState<DirectMessage[]>([]);
-  const [peerTyping, setPeerTyping] = useState<Record<string, boolean>>({});
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-
-  // Unread messages tracking (debounced localStorage save)
-  const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        return JSON.parse(localStorage.getItem("norby_unread_messages") || "{}");
-      } catch (e) {
-        return {};
-      }
-    }
-    return {};
-  });
-
-  const unreadSaveTimeoutRef = useRef<any>(null);
-  useEffect(() => {
-    if (unreadSaveTimeoutRef.current) {
-      clearTimeout(unreadSaveTimeoutRef.current);
-    }
-    unreadSaveTimeoutRef.current = setTimeout(() => {
-      try {
-        localStorage.setItem("norby_unread_messages", JSON.stringify(unreadMessages));
-      } catch (e) {
-        console.warn("[norby] Failed to save unread messages to localStorage");
-      }
-    }, 500);
-    return () => {
-      if (unreadSaveTimeoutRef.current) {
-        clearTimeout(unreadSaveTimeoutRef.current);
-      }
-    };
-  }, [unreadMessages]);
-
-  const unreadMessagesCount = useMemo(() => {
-    return Object.values(unreadMessages).reduce((a, b) => a + b, 0);
-  }, [unreadMessages]);
-
-  // Clear unread count when activeChatUser changes
-  useEffect(() => {
-    if (activeChatUser) {
-      setUnreadMessages((prev) => {
-        if (!prev[activeChatUser.user_id]) return prev;
-        const copy = { ...prev };
-        delete copy[activeChatUser.user_id];
-        return copy;
-      });
-    }
-  }, [activeChatUser]);
-
-  // Save accepted friends to Puter KV as a string array (debounced)
-  const friendsSaveTimeoutRef = useRef<any>(null);
-  useEffect(() => {
-    if (!isSignedIn || !myUserId || myUserId === "anon" || myUserId.startsWith("anon_")) return;
-    if (typeof window !== "undefined" && window.puter) {
-      if (friendsSaveTimeoutRef.current) {
-        clearTimeout(friendsSaveTimeoutRef.current);
-      }
-      friendsSaveTimeoutRef.current = setTimeout(() => {
-        const acceptedIds = chatRequests
-          .filter((r) => r.status === "accepted")
-          .map((r) => (r.sender_id === myUserId ? r.target_id : r.sender_id));
-
-        if (acceptedIds.length > 0) {
-          window.puter.kv.set(`friends_list_${myUserId}`, JSON.stringify(acceptedIds))
-            .catch((err: any) => console.warn("[norby] Failed to save friends list"));
-        }
-      }, 1000);
-    }
-    return () => {
-      if (friendsSaveTimeoutRef.current) {
-        clearTimeout(friendsSaveTimeoutRef.current);
-      }
-    };
-  }, [chatRequests, myUserId, isSignedIn]);
-
-  // Load accepted friends from Puter KV on login (instant load, runs once per session)
-  const friendsLoadedRef = useRef(false);
-  useEffect(() => {
-    if (friendsLoadedRef.current || !isSignedIn || !myUserId || myUserId === "anon" || myUserId.startsWith("anon_")) return;
-    if (typeof window !== "undefined" && window.puter) {
-      friendsLoadedRef.current = true;
-      window.puter.kv.get(`friends_list_${myUserId}`)
-        .then((raw: any) => {
-          if (!raw) return;
-          try {
-            const friendIds = JSON.parse(raw);
-            if (Array.isArray(friendIds) && friendIds.length > 0) {
-              setChatRequests((prev) => {
-                const existingIds = new Set(prev.map(r => r.sender_id === myUserId ? r.target_id : r.sender_id));
-                const newPlaceholders = friendIds
-                  .filter((id: string) => !existingIds.has(id))
-                  .map((id: string) => ({
-                    sender_id: myUserId,
-                    sender_username: handle || myUserId,
-                    sender_avatar: myAvatarUrl,
-                    target_id: id,
-                    status: "accepted",
-                    timestamp: Date.now()
-                  }));
-                return newPlaceholders.length > 0 ? [...prev, ...newPlaceholders] : prev;
-              });
-            }
-          } catch (e) {
-            console.warn("[norby] Failed to parse friends list from Puter KV");
-          }
-        })
-        .catch((err: any) => console.warn("[norby] Failed to load friends list from Puter KV"));
-    }
-  }, [myUserId, handle, myAvatarUrl]);
-
-  // Load DM history from localStorage only (device-local, no server)
-  useEffect(() => {
-    if (!activeChatUser || !myUserId || myUserId === "anon") {
-      setChatMessages([]);
-      setIsLoadingHistory(false);
-      return;
-    }
-
-    const targetUserId = activeChatUser.user_id;
-    const convoId = [myUserId, targetUserId].sort().join(":");
-
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem(`chat_msgs_${convoId}`);
-        if (stored) {
-          const msgs = JSON.parse(stored);
-          const oneHourAgo = Date.now() - 60 * 60 * 1000;
-          const validMsgs = msgs.filter((m: any) => m.timestamp > oneHourAgo);
-          setChatMessages(validMsgs);
-          localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(validMsgs));
-        } else {
-          setChatMessages([]);
-        }
-      } catch (e) {
-        console.warn("[norby] Failed to load chat from localStorage");
-        setChatMessages([]);
-      }
-    }
-    setIsLoadingHistory(false);
-  }, [activeChatUser?.user_id, myUserId]);
-
-  const friends = useMemo(() => {
-    return chatRequests
-      .filter((r) => r.status === "accepted")
-      .map((r) => {
-        const friendId = r.sender_id === myUserId ? r.target_id : r.sender_id;
-        const latestInfo = activeUsers.find((u) => u.user_id === friendId);
-        return {
-          user_id: friendId,
-          username: r.sender_id === myUserId ? (latestInfo?.username || r.target_id) : r.sender_username,
-          avatar_url: r.sender_id === myUserId ? (latestInfo?.avatar_url || "") : r.sender_avatar,
-          vibeEmoji: latestInfo?.vibeEmoji || "☕",
-          bio: latestInfo?.bio || "",
-          selectedTags: latestInfo?.selectedTags || [],
-          lat: latestInfo?.lat,
-          lng: latestInfo?.lng,
-          last_seen: latestInfo?.last_seen,
-          status: latestInfo?.status || "active",
-        };
-      });
-  }, [chatRequests, activeUsers, myUserId]);
-
-
+  // Chat states have been moved to ChatProvider
   // Routing state
   const [activeRoute, setActiveRoute] = useState<RouteData | null>(null);
   const [activeRouteMode, setActiveRouteMode] = useState<TransportMode>("foot");
@@ -633,11 +430,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
               ].slice(0, 5)
             );
           } else if (!existingUser.is_broadcasting_audio && msg.data.is_broadcasting_audio) {
-            const isFriend = chatRequestsRef.current.some(
-              (r) =>
-                r.status === "accepted" &&
-                (r.sender_id === msg.data.user_id || r.target_id === msg.data.user_id)
-            );
+            const isFriend = true; // Everyone nearby who speaks triggers it
             if (isFriend) {
               addToast(`🎙️ @${msg.data.username} is speaking nearby!`, "default");
               setNotifications((prevNotifs) =>
@@ -734,106 +527,12 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     onUserDisconnected: (msg) => {
       setActiveUsers((prev) => prev.filter((u) => u.user_id !== msg.user_id));
     },
-    onChatRequestReceived: (msg) => {
-      addToast(`💬 Chat request from @${msg.request.sender_username}!`, "request");
-      setNotifications((prev) => [
-        {
-          id: Math.random().toString(36).substring(7),
-          text: `@${msg.request.sender_username} wants to connect with you`,
-          time: Date.now(),
-          read: false,
-        },
-        ...prev,
-      ].slice(0, 5));
-      setChatRequests((prev) => {
-        const filtered = prev.filter((r) => r.sender_id !== msg.request.sender_id || r.target_id !== msg.request.target_id);
-        return [...filtered, msg.request];
-      });
-    },
-    onChatRequestResponded: (msg) => {
-      const isAccepted = msg.request.status === "accepted";
-      const otherUser = msg.request.sender_id === myUserId ? msg.request.target_id : msg.request.sender_id;
-      const otherInfo = activeUsers.find((u) => u.user_id === otherUser);
-      const otherHandle = otherInfo?.username || "Someone";
-
-      if (isAccepted) {
-        addToast(`✅ Connected with @${otherHandle}! You can now chat.`, "default");
-      } else {
-        addToast(`❌ Chat request to @${otherHandle} was declined.`, "default");
-      }
-
-      setChatRequests((prev) => {
-        const filtered = prev.filter((r) => r.sender_id !== msg.request.sender_id || r.target_id !== msg.request.target_id);
-        return [...filtered, msg.request];
-      });
-    },
-    onNewDirectMessage: (msg) => {
-      if (activeChatUserRef.current && (msg.message.sender_id === activeChatUserRef.current.user_id || msg.message.recipient_id === activeChatUserRef.current.user_id)) {
-        setChatMessages((prev) => {
-          if (prev.some((m) => m.id === msg.message.id)) return prev;
-          
-          // Filter out matching local optimistic message from local UI state
-          let filtered = prev;
-          if (msg.message.sender_id === myUserId) {
-            filtered = prev.filter(
-              (m) => !m.id.startsWith("local_") || m.text !== msg.message.text
-            );
-          }
-          
-          const newMsgs = [...filtered, msg.message];
-          const convoId = [myUserId, activeChatUserRef.current.user_id].sort().join(":");
-          if (typeof window !== "undefined") {
-            try {
-              const oneHourAgo = Date.now() - 60 * 60 * 1000;
-              const filteredStorage = newMsgs.filter((m) => m.timestamp > oneHourAgo);
-              localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filteredStorage));
-            } catch (e) {
-              console.warn("[norby] Failed to save chat to localStorage");
-            }
-          }
-          return newMsgs;
-        });
-      } else {
-        if (msg.message.sender_id !== myUserId) {
-          addToast(`✉️ New message from @${msg.message.sender_username}: "${msg.message.text.substring(0, 20)}${msg.message.text.length > 20 ? "..." : ""}"`, "default");
-          setUnreadMessages((prev) => ({
-            ...prev,
-            [msg.message.sender_id]: (prev[msg.message.sender_id] || 0) + 1,
-          }));
-        }
-        if (typeof window !== "undefined") {
-          try {
-            const otherUserId = msg.message.sender_id === myUserId ? msg.message.recipient_id : msg.message.sender_id;
-            const convoId = [myUserId, otherUserId].sort().join(":");
-            let list = [];
-            const stored = localStorage.getItem(`chat_msgs_${convoId}`);
-            if (stored) {
-              list = JSON.parse(stored);
-            }
-            if (!list.some((m: any) => m.id === msg.message.id)) {
-              list.push(msg.message);
-              const oneHourAgo = Date.now() - 60 * 60 * 1000;
-              const filtered = list.filter((m: any) => m.timestamp > oneHourAgo);
-              localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filtered));
-            }
-          } catch (e) {
-            console.warn("[norby] Failed to cache message");
-          }
-        }
-      }
-    },
-    onDMHistory: (msg) => {
-      // Server history no longer used - all messages stored locally
-    },
-    onTypingIndicator: (msg) => {
-      setPeerTyping((prev) => ({
-        ...prev,
-        [msg.sender_id]: msg.is_typing,
-      }));
-    },
-    onChatsList: (msg) => {
-      setChatRequests(msg.requests || []);
-    },
+    onChatRequestReceived: (msg) => globalEventBus.emit("chat:chat_request", msg),
+    onChatRequestResponded: (msg) => globalEventBus.emit("chat:chat_respond", msg),
+    onNewDirectMessage: (msg) => globalEventBus.emit("chat:new_dm", msg),
+    onDMHistory: (msg) => {},
+    onTypingIndicator: (msg) => globalEventBus.emit("chat:typing_indicator", msg),
+    onChatsList: (msg) => globalEventBus.emit("chat:chats_list", msg),
     onRtcOffer: webRTC.handleRtcOffer,
     onRtcAnswer: webRTC.handleRtcAnswer,
     onRtcIceCandidate: webRTC.handleRtcIceCandidate,
@@ -899,57 +598,11 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     setSelectedHotspot(null);
   }, [socket]);
 
+
+
   // Deprecated - history loaded directly in main effect from localStorage
 
-  const sendChatRequest = useCallback((targetUserId: string) => {
-    socket.sendChatRequest(targetUserId);
-  }, [socket]);
-
-  const respondChatRequest = useCallback((senderId: string, status: "accepted" | "rejected") => {
-    socket.respondChatRequest(senderId, status);
-  }, [socket]);
-
-  const sendDirectMessage = useCallback((text: string) => {
-    const chatUser = activeChatUserRef.current;
-    if (!chatUser || !myUserId || myUserId === "anon") return;
-
-    const optimisticMsg: DirectMessage = {
-      id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      sender_id: myUserId,
-      sender_username: handle || myUserId,
-      sender_avatar: myAvatarUrl,
-      recipient_id: chatUser.user_id,
-      text,
-      timestamp: Date.now(),
-    };
-
-    setChatMessages((prev) => {
-      const next = [...prev, optimisticMsg];
-      const convoId = [myUserId, chatUser.user_id].sort().join(":");
-      if (typeof window !== "undefined") {
-        try {
-          const oneHourAgo = Date.now() - 60 * 60 * 1000;
-          const filtered = next.filter((m) => m.timestamp > oneHourAgo);
-          localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filtered));
-        } catch (e) {
-          console.warn("[norby] Failed to save chat to localStorage");
-        }
-      }
-      return next;
-    });
-
-    socket.sendDirectMessage(chatUser.user_id, text);
-  }, [myUserId, handle, myAvatarUrl, socket]);
-
-  const sendTypingState = useCallback((isTyping: boolean) => {
-    const chatUser = activeChatUserRef.current;
-    if (!chatUser) return;
-    socket.sendTypingState(chatUser.user_id, isTyping);
-  }, [socket]);
-
-  const requestDMHistory = useCallback((targetUserId: string) => {
-    socket.requestDMHistory(targetUserId);
-  }, [socket]);
+  // Chat action methods have been moved to ChatProvider
 
   const refreshRadar = useCallback(() => {
     setFollowUser(true);
@@ -1192,32 +845,20 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     isLoadingRoute,
   ]);
 
-  const socialValue = useMemo(() => ({
-    chatRequests,
-    friends,
-    sendChatRequest,
-    respondChatRequest,
-  }), [chatRequests, friends]);
-
-  const dmValue = useMemo(() => ({
-    chatMessages,
-    peerTyping,
-    activeChatUser,
-    setActiveChatUser,
-    sendDirectMessage,
-    sendTypingState,
-    requestDMHistory,
-    isLoadingHistory,
-    unreadMessagesCount,
-  }), [chatMessages, peerTyping, activeChatUser, isLoadingHistory, unreadMessagesCount]);
-
   return (
     <MapContext.Provider value={mapValue}>
-      <SocialContext.Provider value={socialValue}>
-        <DMContext.Provider value={dmValue}>
-          {children}
-        </DMContext.Provider>
-      </SocialContext.Provider>
+      <ChatProvider
+        socket={socket}
+        myUserId={myUserId}
+        handle={handle}
+        myAvatarUrl={myAvatarUrl}
+        addToast={addToast}
+        setNotifications={setNotifications}
+        activeUsers={activeUsers}
+        isSignedIn={isSignedIn}
+      >
+        {children}
+      </ChatProvider>
     </MapContext.Provider>
   );
 }
@@ -1226,22 +867,6 @@ export function useMapContext() {
   const context = useContext(MapContext);
   if (!context) {
     throw new Error("useMapContext must be used within a MapProvider");
-  }
-  return context;
-}
-
-export function useSocialContext() {
-  const context = useContext(SocialContext);
-  if (!context) {
-    throw new Error("useSocialContext must be used within a MapProvider");
-  }
-  return context;
-}
-
-export function useDMContext() {
-  const context = useContext(DMContext);
-  if (!context) {
-    throw new Error("useDMContext must be used within a MapProvider");
   }
   return context;
 }

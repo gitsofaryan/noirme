@@ -15,10 +15,12 @@ import {
   Sparkles,
   UserCheck,
   UserPlus,
-  Loader2
+  Loader2,
+  Trash2
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
 
 export default function ChatPage() {
   const router = useRouter();
@@ -54,6 +56,7 @@ export default function ChatPage() {
     sendDirectMessage,
     sendTypingState,
     isLoadingHistory,
+    clearChatHistory,
   } = useDMContext();
 
   const [activeTab, setActiveTab] = useState<"chats" | "hotspots" | "requests">("chats");
@@ -488,7 +491,24 @@ export default function ChatPage() {
                   </button>
 
                   {/* Avatar */}
-                  <div className="relative flex-shrink-0">
+                  <button
+                    onClick={() => {
+                      setSelectedUser({
+                        user_id: activeChatUser.user_id,
+                        username: activeChatUser.username,
+                        avatar_url: activeChatUser.avatar_url,
+                        vibeEmoji: activeChatUser.vibeEmoji || "🔥",
+                        bio: activeChatUser.bio || "",
+                        selectedTags: activeChatUser.selectedTags || [],
+                        gender: activeChatUser.gender || "",
+                        age: activeChatUser.age || "",
+                        status: activeChatUser.status || "active",
+                      });
+                      router.push("/");
+                    }}
+                    className="relative flex-shrink-0 cursor-pointer active:scale-95 transition-transform"
+                    title={`View @${activeChatUser.username}'s profile`}
+                  >
                     <div className="w-12 h-12 rounded-xl bg-zinc-100 overflow-hidden border border-zinc-200">
                       <img
                         src={activeChatUser.avatar_url || getAvatarUrl(activeChatUser.username || activeChatUser.user_id)}
@@ -499,7 +519,7 @@ export default function ChatPage() {
                     <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-white rounded-full border border-zinc-200 shadow-sm flex items-center justify-center">
                       <span className="text-[9px] font-extrabold">{activeChatUser.vibeEmoji}</span>
                     </div>
-                  </div>
+                  </button>
 
                   {/* Details - with proper truncation */}
                   <div className="min-w-0 flex-1">
@@ -510,6 +530,19 @@ export default function ChatPage() {
                       <Clock className="w-2.5 h-2.5 text-zinc-300 flex-shrink-0" /> 1h vanish mode
                     </div>
                   </div>
+                  
+                  {/* Actions */}
+                  <button
+                    onClick={() => {
+                      if (confirm("Clear this chat history?")) {
+                        clearChatHistory(activeChatUser.user_id);
+                      }
+                    }}
+                    title="Clear Chat"
+                    className="p-2 flex-shrink-0 rounded-xl text-zinc-400 hover:text-rose-500 hover:bg-rose-50 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <Trash2 className="w-4.5 h-4.5" />
+                  </button>
                 </div>
 
 
@@ -559,7 +592,15 @@ export default function ChatPage() {
                             : "bg-white border border-zinc-200/60 text-zinc-900 rounded-bl-none shadow-sm hover:shadow-md"
                             }`}
                         >
-                          {msg.text}
+                          <ReactMarkdown
+                            components={{
+                              img: ({node, ...props}) => <img style={{maxWidth: '100%', borderRadius: '8px', marginTop: '8px'}} {...props} />,
+                              p: ({node, ...props}) => <p style={{margin: 0}} {...props} />,
+                              a: ({node, ...props}) => <a style={{textDecoration: 'underline'}} target="_blank" rel="noopener noreferrer" {...props} />
+                            }}
+                          >
+                            {msg.text}
+                          </ReactMarkdown>
                         </div>
                         {/* Time */}
                         <span className="text-[8px] md:text-[9px] text-zinc-400 font-extrabold mt-1 px-1.5 select-none">

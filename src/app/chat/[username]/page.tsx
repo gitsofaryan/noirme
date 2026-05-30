@@ -13,14 +13,20 @@ export default function ChatByUsernamePage() {
     const router = useRouter();
     const params = useParams();
     const { friends } = useSocialContext();
-    const { setActiveChatUser } = useDMContext();
+    const { activeChatUser, setActiveChatUser } = useDMContext();
 
     // Safely extract username from params, defaulting to empty string
     const username = useMemo(() => {
         if (!params) return "";
-        if (typeof params.username === "string") return params.username;
-        if (Array.isArray(params.username)) return params.username[0] || "";
-        return "";
+        let raw = "";
+        if (typeof params.username === "string") raw = params.username;
+        else if (Array.isArray(params.username)) raw = params.username[0] || "";
+        
+        try {
+            return decodeURIComponent(raw);
+        } catch (e) {
+            return raw;
+        }
     }, [params]);
 
     useEffect(() => {
@@ -33,13 +39,17 @@ export default function ChatByUsernamePage() {
 
         if (targetFriend) {
             // Friend found - set active chat user so messages display
-            setActiveChatUser(targetFriend);
+            if (activeChatUser?.user_id !== targetFriend.user_id) {
+                setActiveChatUser(targetFriend);
+            }
         } else {
             // Friend not found, redirect to main chat
-            setActiveChatUser(null);
+            if (activeChatUser !== null) {
+                setActiveChatUser(null);
+            }
             router.push("/chat");
         }
-    }, [username, friends, router, setActiveChatUser]);
+    }, [username, friends, router, activeChatUser?.user_id, setActiveChatUser]);
 
     // Render the main chat page (which handles the actual chat UI)
     return <ChatPage />;
