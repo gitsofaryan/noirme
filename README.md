@@ -1,8 +1,8 @@
-# Noirme 🗺️
+# Norby 🗺️
 
 > **Find your crew. Stop scrolling. Start meeting.**
 
-Noirme is a hyper-local, privacy-first, real-time social discovery platform designed to cure digital isolation and Gen-Z loneliness. It connects people nearby for spontaneous, offline face-to-face meetups—whether it's getting a matcha latte, co-working, skating, or jamming out to alt records.
+Norby is a hyper-local, privacy-first, real-time social discovery platform designed to cure digital isolation and Gen-Z loneliness. It connects people nearby for spontaneous, offline face-to-face meetups—whether it's getting a matcha latte, co-working, skating, or jamming out to alt records.
 
 ---
 
@@ -30,8 +30,8 @@ Noirme is a hyper-local, privacy-first, real-time social discovery platform desi
 ### 1. Clone & Install Dependencies
 
 ```bash
-git clone https://github.com/gitsofaryan/noirme.git
-cd noirme
+git clone https://github.com/gitsofaryan/norby.git
+cd norby
 npm install
 ```
 
@@ -46,7 +46,7 @@ NEXT_PUBLIC_WS_URL=ws://localhost:3001
 
 ### 3. Start the Development Server
 
-Noirme runs on two parallel servers (Next.js frontend + WebSocket coordinator). Spin both up concurrently:
+Norby runs on two parallel servers (Next.js frontend + WebSocket coordinator). Spin both up concurrently:
 
 ```bash
 npm run dev
@@ -59,6 +59,6 @@ npm run dev
 
 ## 🔒 Security & Privacy
 
-Noirme keeps your coordinates secure:
+Norby keeps your coordinates secure:
 1. Coordinates are never logged or stored long-term in any central database; they reside solely in transient Redis cache states.
 2. The location masking offset remains consistent per browser session, ensuring you move smoothly without jittering while keeping your precise location protected.

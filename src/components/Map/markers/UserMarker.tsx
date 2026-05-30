@@ -78,7 +78,7 @@ function createAvatarMarkerIconRaw(
           position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);
           width:${size}px; height:${size}px; border-radius:50%;
           border: 2px solid #e11d48;
-          animation: noirme-ripple-anim 1.5s infinite ease-out;
+          animation: norby-ripple-anim 1.5s infinite ease-out;
           will-change: transform, opacity;
           backface-visibility: hidden;
           z-index: -1;
@@ -87,14 +87,14 @@ function createAvatarMarkerIconRaw(
           position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);
           width:${size}px; height:${size}px; border-radius:50%;
           border: 2px solid #e11d48;
-          animation: noirme-ripple-anim 1.5s infinite ease-out;
+          animation: norby-ripple-anim 1.5s infinite ease-out;
           animation-delay: 0.5s;
           will-change: transform, opacity;
           backface-visibility: hidden;
           z-index: -1;
         "></div>
         <style>
-          @keyframes noirme-ripple-anim {
+          @keyframes norby-ripple-anim {
             0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
             100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
           }
@@ -104,13 +104,13 @@ function createAvatarMarkerIconRaw(
         <div style="
           position:absolute; top:-${Math.round(16 * scale)}px; right:-${Math.round(16 * scale)}px;
           font-size: ${Math.round(24 * scale)}px;
-          animation: noirme-wave-anim 1.2s infinite;
+          animation: norby-wave-anim 1.2s infinite;
           transform-origin: bottom right;
           z-index: 10;
           filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
         ">👋</div>
         <style>
-          @keyframes noirme-wave-anim {
+          @keyframes norby-wave-anim {
             0% { transform: rotate(0deg); }
             20% { transform: rotate(-20deg); }
             40% { transform: rotate(10deg); }

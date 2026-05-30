@@ -229,7 +229,7 @@ export function useSocket({
         }
       }
 
-      console.log(`[noirme] Connecting to WebSocket: ${wsUrl} (Retry count: ${retryCount})`);
+      console.log(`[norby] Connecting to WebSocket: ${wsUrl} (Retry count: ${retryCount})`);
       ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
@@ -247,7 +247,7 @@ export function useSocket({
 
           // Flush offline messages
           if (offlineMessagesRef.current.length > 0) {
-            console.log(`[noirme] Offline outbox has ${offlineMessagesRef.current.length} messages. Flushing...`);
+            console.log(`[norby] Offline outbox has ${offlineMessagesRef.current.length} messages. Flushing...`);
             offlineMessagesRef.current.forEach((item) => {
               activeWs.send(
                 JSON.stringify({
@@ -332,12 +332,12 @@ export function useSocket({
               break;
           }
         } catch (e) {
-          console.error("[noirme] Msg parse error:", e);
+          console.error("[norby] Msg parse error:", e);
         }
       };
 
       ws.onerror = () => {
-        console.warn(`[noirme] WebSocket connection error on URL: ${wsUrl}`);
+        console.warn(`[norby] WebSocket connection error on URL: ${wsUrl}`);
       };
 
       ws.onclose = () => {
@@ -348,7 +348,7 @@ export function useSocket({
 
         // Exponential backoff reconnect with jitter
         const delay = Math.min(10000, Math.pow(2, retryCount) * 1000) + (Math.random() - 0.5) * 1000;
-        console.log(`[noirme] Socket closed. Reconnecting in ${Math.round(delay)}ms...`);
+        console.log(`[norby] Socket closed. Reconnecting in ${Math.round(delay)}ms...`);
         retryCount++;
         if (retryCount >= 3) {
           setConnectionFailed(true);

@@ -167,12 +167,12 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      let anonId = localStorage.getItem("noirme_anon_id");
-      let anonHandle = localStorage.getItem("noirme_anon_handle");
+      let anonId = localStorage.getItem("norby_anon_id");
+      let anonHandle = localStorage.getItem("norby_anon_handle");
 
       if (!anonId) {
         anonId = `anon_${Math.random().toString(36).substring(2, 10)}`;
-        localStorage.setItem("noirme_anon_id", anonId);
+        localStorage.setItem("norby_anon_id", anonId);
       }
 
       if (!anonHandle) {
@@ -182,7 +182,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
         const noun = nouns[Math.floor(Math.random() * nouns.length)];
         const num = Math.floor(100 + Math.random() * 900); // 100-999
         anonHandle = `${adj}${noun}_${num}`;
-        localStorage.setItem("noirme_anon_handle", anonHandle);
+        localStorage.setItem("norby_anon_handle", anonHandle);
       }
 
       setAnonDetails({ id: anonId, handle: anonHandle });
@@ -203,7 +203,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [localBlocks, setLocalBlocks] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       try {
-        return JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+        return JSON.parse(localStorage.getItem("norby_local_blocks") || "[]");
       } catch {
         return [];
       }
@@ -215,7 +215,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const syncBlocks = () => {
       try {
-        const local = JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+        const local = JSON.parse(localStorage.getItem("norby_local_blocks") || "[]");
         setLocalBlocks(local);
       } catch (e) { }
     };
@@ -328,7 +328,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [unreadMessages, setUnreadMessages] = useState<Record<string, number>>(() => {
     if (typeof window !== "undefined") {
       try {
-        return JSON.parse(localStorage.getItem("noirme_unread_messages") || "{}");
+        return JSON.parse(localStorage.getItem("norby_unread_messages") || "{}");
       } catch (e) {
         return {};
       }
@@ -343,9 +343,9 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     }
     unreadSaveTimeoutRef.current = setTimeout(() => {
       try {
-        localStorage.setItem("noirme_unread_messages", JSON.stringify(unreadMessages));
+        localStorage.setItem("norby_unread_messages", JSON.stringify(unreadMessages));
       } catch (e) {
-        console.warn("[noirme] Failed to save unread messages to localStorage");
+        console.warn("[norby] Failed to save unread messages to localStorage");
       }
     }, 500);
     return () => {
@@ -386,7 +386,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
 
         if (acceptedIds.length > 0) {
           window.puter.kv.set(`friends_list_${myUserId}`, JSON.stringify(acceptedIds))
-            .catch((err: any) => console.warn("[noirme] Failed to save friends list"));
+            .catch((err: any) => console.warn("[norby] Failed to save friends list"));
         }
       }, 1000);
     }
@@ -425,10 +425,10 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
               });
             }
           } catch (e) {
-            console.warn("[noirme] Failed to parse friends list from Puter KV");
+            console.warn("[norby] Failed to parse friends list from Puter KV");
           }
         })
-        .catch((err: any) => console.warn("[noirme] Failed to load friends list from Puter KV"));
+        .catch((err: any) => console.warn("[norby] Failed to load friends list from Puter KV"));
     }
   }, [myUserId, handle, myAvatarUrl]);
 
@@ -456,7 +456,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
           setChatMessages([]);
         }
       } catch (e) {
-        console.warn("[noirme] Failed to load chat from localStorage");
+        console.warn("[norby] Failed to load chat from localStorage");
         setChatMessages([]);
       }
     }
@@ -529,7 +529,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch((err) => {
-        console.error("[noirme] Route fetch failed:", err);
+        console.error("[norby] Route fetch failed:", err);
         if (active) {
           setIsLoadingRoute(false);
           addToast("Failed to calculate route", "default");
@@ -777,7 +777,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
               const filteredStorage = newMsgs.filter((m) => m.timestamp > oneHourAgo);
               localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filteredStorage));
             } catch (e) {
-              console.warn("[noirme] Failed to save chat to localStorage");
+              console.warn("[norby] Failed to save chat to localStorage");
             }
           }
           return newMsgs;
@@ -806,7 +806,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
               localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filtered));
             }
           } catch (e) {
-            console.warn("[noirme] Failed to cache message");
+            console.warn("[norby] Failed to cache message");
           }
         }
       }
@@ -844,7 +844,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     await blockUser(userId);
     setLocalBlocks((prev) => {
       const newBlocks = [...prev, userId];
-      localStorage.setItem("noirme_local_blocks", JSON.stringify(newBlocks));
+      localStorage.setItem("norby_local_blocks", JSON.stringify(newBlocks));
       return newBlocks;
     });
     setSelectedUser(null);
@@ -921,7 +921,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
           const filtered = next.filter((m) => m.timestamp > oneHourAgo);
           localStorage.setItem(`chat_msgs_${convoId}`, JSON.stringify(filtered));
         } catch (e) {
-          console.warn("[noirme] Failed to save chat to localStorage");
+          console.warn("[norby] Failed to save chat to localStorage");
         }
       }
       return next;

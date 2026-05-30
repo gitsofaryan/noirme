@@ -1,4 +1,4 @@
-const CACHE_NAME = "noirme-pwa-cache-v1.0.1";
+const CACHE_NAME = "norby-pwa-cache-v1.0.1";
 
 const STATIC_ASSETS = [
   "/",
@@ -16,9 +16,9 @@ const STATIC_ASSETS = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log("[noirme-sw] Pre-caching core app shell.");
+      console.log("[norby-sw] Pre-caching core app shell.");
       return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn("[noirme-sw] App shell pre-cache partial match or offline during installation:", err);
+        console.warn("[norby-sw] App shell pre-cache partial match or offline during installation:", err);
       });
     })
   );
@@ -32,7 +32,7 @@ self.addEventListener("activate", (event) => {
       return Promise.all(
         cacheNames.map((name) => {
           if (name !== CACHE_NAME) {
-            console.log("[noirme-sw] Deleting old cache version:", name);
+            console.log("[norby-sw] Deleting old cache version:", name);
             return caches.delete(name);
           }
         })

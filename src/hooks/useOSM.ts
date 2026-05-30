@@ -36,7 +36,7 @@ export function useOSM(
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith("noirme_osm_cache_")) {
+        if (key && key.startsWith("norby_osm_cache_")) {
           const raw = localStorage.getItem(key);
           if (raw) {
             const parsed = JSON.parse(raw);
@@ -51,7 +51,7 @@ export function useOSM(
       const remaining: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith("noirme_osm_cache_")) remaining.push(key);
+        if (key && key.startsWith("norby_osm_cache_")) remaining.push(key);
       }
       if (remaining.length > 30) {
         const toEvict = remaining.slice(0, remaining.length - 30);
@@ -59,7 +59,7 @@ export function useOSM(
       }
       if (keysToRemove.length > 0) {
         console.log(
-          `[noirme-osm] Evicted ${keysToRemove.length} expired OSM cache entries.`,
+          `[norby-osm] Evicted ${keysToRemove.length} expired OSM cache entries.`,
         );
       }
     } catch (e) {
@@ -83,7 +83,7 @@ export function useOSM(
     const cacheE = Math.ceil(ne.lng / roundTo) * roundTo;
 
     const cacheKey = `${cacheS},${cacheW},${cacheN},${cacheE}`;
-    const storageKey = `noirme_osm_cache_${cacheKey}`;
+    const storageKey = `norby_osm_cache_${cacheKey}`;
 
     // 1. In-memory fast cache check
     if (cache.current.has(cacheKey)) {
@@ -179,7 +179,7 @@ export function useOSM(
           typeof window !== "undefined" &&
           window.location.hostname === "localhost"
         ) {
-          console.warn("[noirme] OSM fetch error:", err);
+          console.warn("[norby] OSM fetch error:", err);
         }
       });
 

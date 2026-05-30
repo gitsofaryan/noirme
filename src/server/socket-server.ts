@@ -289,13 +289,13 @@ setInterval(async () => {
   if (useRedis && redisPub) {
     try {
       // Hotspots cleanup
-      const allHotspots = await redisPub.hGetAll("noirme:hotspots");
+      const allHotspots = await redisPub.hGetAll("norby:hotspots");
       let changed = false;
       for (const [id, raw] of Object.entries(allHotspots)) {
         const hotspot: Hotspot = JSON.parse(raw);
         if (hotspot.expires_at < now) {
-          await redisPub.hDel("noirme:hotspots", id);
-          await redisPub.zRem("noirme:hotspot_locations", id);
+          await redisPub.hDel("norby:hotspots", id);
+          await redisPub.zRem("norby:hotspot_locations", id);
           logEvent("hotspot_expired", { id });
           changed = true;
         }
@@ -305,11 +305,11 @@ setInterval(async () => {
       }
 
       // Chat requests cleanup
-      const allRequests = await redisPub.hGetAll("noirme:chat_requests");
+      const allRequests = await redisPub.hGetAll("norby:chat_requests");
       for (const [key, raw] of Object.entries(allRequests)) {
         const req: ChatRequest = JSON.parse(raw);
         if (req.timestamp < dayAgo) {
-          await redisPub.hDel("noirme:chat_requests", key);
+          await redisPub.hDel("norby:chat_requests", key);
           logEvent("redis_chat_request_expired", { key });
         }
       }
@@ -409,11 +409,11 @@ async function sendChatsSync(ws: WebSocket, userId: string) {
 
   if (useRedis && redisPub) {
     try {
-      const raw = await redisPub.hGetAll("noirme:chat_requests");
+      const raw = await redisPub.hGetAll("norby:chat_requests");
       for (const [key, rawVal] of Object.entries(raw)) {
         const req: ChatRequest = JSON.parse(rawVal);
         if (req.timestamp < dayAgo) {
-          await redisPub.hDel("noirme:chat_requests", key);
+          await redisPub.hDel("norby:chat_requests", key);
         } else {
           allRequests.push(req);
         }
@@ -454,7 +454,7 @@ async function triggerChatsSync(userId: string) {
   if (useRedis && redisPub) {
     try {
       await redisPub.publish(
-        "noirme:direct_notifications",
+        "norby:direct_notifications",
         JSON.stringify({
           target_user_id: userId,
           payload: {
@@ -472,10 +472,10 @@ async function triggerChatsSync(userId: string) {
 async function publishHotspotUpdate() {
   if (redisPub) {
     try {
-      const all = await redisPub.hGetAll("noirme:hotspots");
+      const all = await redisPub.hGetAll("norby:hotspots");
       const list = Object.values(all).map((h) => JSON.parse(h));
       await redisPub.publish(
-        "noirme:hotspots_updates",
+        "norby:hotspots_updates",
         JSON.stringify({
           type: "hotspots_list",
           hotspots: list,
@@ -516,7 +516,7 @@ async function sendSync(ws: WebSocket) {
   if (useRedis && redisPub) {
     try {
       await redisPub.set(
-        `noirme:user_session:${clientInfo.user_id}`,
+        `norby:user_session:${clientInfo.user_id}`,
         (ws as any).socketId || "default",
         { EX: 120 },
       );
@@ -525,14 +525,14 @@ async function sendSync(ws: WebSocket) {
 
       // Geo-spatial query for active users
       const nearbyUserIds = await redisPub.geoSearch(
-        "noirme:user_locations",
+        "norby:user_locations",
         { latitude: clientInfo.lat, longitude: clientInfo.lng },
         { radius: maxRange, unit: "km" },
       );
 
       if (nearbyUserIds && nearbyUserIds.length > 0) {
         const rawUsers = (await redisPub.hmGet(
-          "noirme:active_users",
+          "norby:active_users",
           nearbyUserIds,
         )) as any[];
         
@@ -547,7 +547,7 @@ async function sendSync(ws: WebSocket) {
       }
 
       // Get all active hotspots (matching broadcast state to prevent blinking)
-      const allHotspotsRaw = await redisPub.hGetAll("noirme:hotspots");
+      const allHotspotsRaw = await redisPub.hGetAll("norby:hotspots");
       const validHotspots: Hotspot[] = [];
       const expiredHotspotIds: string[] = [];
 
@@ -571,8 +571,8 @@ async function sendSync(ws: WebSocket) {
         });
         const purgePipeline = redisPub.multi();
         expiredHotspotIds.forEach((rid) => {
-          purgePipeline.zRem("noirme:hotspot_locations", rid);
-          purgePipeline.hDel("noirme:hotspots", rid);
+          purgePipeline.zRem("norby:hotspot_locations", rid);
+          purgePipeline.hDel("norby:hotspots", rid);
         });
         await purgePipeline.exec();
       }
@@ -810,7 +810,7 @@ wss.on("connection", async (ws: any) => {
         if (infoBlocks.length > 0) {
           if (useRedis && redisPub) {
             try {
-              const rawHotspots = await redisPub.hGetAll("noirme:hotspots");
+              const rawHotspots = await redisPub.hGetAll("norby:hotspots");
               for (const [rid, rawH] of Object.entries(rawHotspots)) {
                 const hotspot: Hotspot = JSON.parse(rawH);
                 const isHostBlocker = hotspot.host_id === info.user_id;
@@ -835,12 +835,12 @@ wss.on("connection", async (ws: any) => {
 
                 if (changed) {
                   await redisPub.hSet(
-                    "noirme:hotspots",
+                    "norby:hotspots",
                     rid,
                     JSON.stringify(hotspot),
                   );
                   await redisPub.publish(
-                    "noirme:chat_messages",
+                    "norby:chat_messages",
                     JSON.stringify({
                       roomId: rid,
                       rosterUpdateOnly: true,
@@ -897,18 +897,18 @@ wss.on("connection", async (ws: any) => {
 
         if (useRedis && redisPub) {
           await redisPub.hSet(
-            "noirme:active_users",
+            "norby:active_users",
             info.user_id,
             JSON.stringify(info),
           );
 
-          await redisPub.geoAdd("noirme:user_locations", {
+          await redisPub.geoAdd("norby:user_locations", {
             longitude: info.lng,
             latitude: info.lat,
             member: info.user_id,
           });
 
-          await redisPub.set(`noirme:user_session:${info.user_id}`, ws.socketId || "default", {
+          await redisPub.set(`norby:user_session:${info.user_id}`, ws.socketId || "default", {
             EX: 120,
           });
 
@@ -917,7 +917,7 @@ wss.on("connection", async (ws: any) => {
           if (nowBroadcast - lastTime >= 2000) {
             lastBroadcastTime.set(info.user_id, nowBroadcast);
             await redisPub.publish(
-              "noirme:location_updates",
+              "norby:location_updates",
               JSON.stringify({
                 type: "location_update",
                 data: info,
@@ -992,12 +992,12 @@ wss.on("connection", async (ws: any) => {
 
         if (useRedis && redisPub) {
           await redisPub.hSet(
-            "noirme:hotspots",
+            "norby:hotspots",
             roomId,
             JSON.stringify(newHotspot),
           );
 
-          await redisPub.geoAdd("noirme:hotspot_locations", {
+          await redisPub.geoAdd("norby:hotspot_locations", {
             longitude: newHotspot.lng,
             latitude: newHotspot.lat,
             member: roomId,
@@ -1031,7 +1031,7 @@ wss.on("connection", async (ws: any) => {
         logEvent("join_requested", { roomId, user_id, username });
 
         if (useRedis && redisPub) {
-          const rawHotspot = await redisPub.hGet("noirme:hotspots", roomId);
+          const rawHotspot = await redisPub.hGet("norby:hotspots", roomId);
           if (!rawHotspot) return;
           const hotspot: Hotspot = JSON.parse(rawHotspot);
 
@@ -1049,14 +1049,14 @@ wss.on("connection", async (ws: any) => {
           }
 
           await redisPub.hSet(
-            "noirme:hotspots",
+            "norby:hotspots",
             roomId,
             JSON.stringify(hotspot),
           );
           await publishHotspotUpdate();
 
           await redisPub.publish(
-            "noirme:direct_notifications",
+            "norby:direct_notifications",
             JSON.stringify({
               target_user_id: hotspot.host_id,
               payload: {
@@ -1123,7 +1123,7 @@ wss.on("connection", async (ws: any) => {
         logEvent("join_responded", { roomId, guestId, status });
 
         if (useRedis && redisPub) {
-          const rawHotspot = await redisPub.hGet("noirme:hotspots", roomId);
+          const rawHotspot = await redisPub.hGet("norby:hotspots", roomId);
           if (!rawHotspot) return;
           const hotspot: Hotspot = JSON.parse(rawHotspot);
 
@@ -1131,14 +1131,14 @@ wss.on("connection", async (ws: any) => {
           if (request) {
             request.status = status;
             await redisPub.hSet(
-              "noirme:hotspots",
+              "norby:hotspots",
               roomId,
               JSON.stringify(hotspot),
             );
             await publishHotspotUpdate();
 
             await redisPub.publish(
-              "noirme:direct_notifications",
+              "norby:direct_notifications",
               JSON.stringify({
                 target_user_id: guestId,
                 payload: {
@@ -1152,7 +1152,7 @@ wss.on("connection", async (ws: any) => {
 
             if (status === "accepted") {
               await redisPub.publish(
-                "noirme:direct_notifications",
+                "norby:direct_notifications",
                 JSON.stringify({
                   target_user_id: guestId,
                   payload: {
@@ -1204,7 +1204,7 @@ wss.on("connection", async (ws: any) => {
         logEvent("message_sent", { roomId, sender_id, sender_username });
 
         if (useRedis && redisPub) {
-          const rawHotspot = await redisPub.hGet("noirme:hotspots", roomId);
+          const rawHotspot = await redisPub.hGet("norby:hotspots", roomId);
           if (!rawHotspot) return;
           const hotspot: Hotspot = JSON.parse(rawHotspot);
 
@@ -1228,13 +1228,13 @@ wss.on("connection", async (ws: any) => {
               hotspot.messages = hotspot.messages.slice(-100);
             }
             await redisPub.hSet(
-              "noirme:hotspots",
+              "norby:hotspots",
               roomId,
               JSON.stringify(hotspot),
             );
 
             await redisPub.publish(
-              "noirme:chat_messages",
+              "norby:chat_messages",
               JSON.stringify({
                 roomId,
                 message: newMessage,
@@ -1295,26 +1295,26 @@ wss.on("connection", async (ws: any) => {
         logEvent("hotspot_left", { roomId, user_id });
 
         if (useRedis && redisPub) {
-          const rawHotspot = await redisPub.hGet("noirme:hotspots", roomId);
+          const rawHotspot = await redisPub.hGet("norby:hotspots", roomId);
           if (!rawHotspot) return;
           const hotspot: Hotspot = JSON.parse(rawHotspot);
 
           if (hotspot.host_id === user_id) {
-            await redisPub.hDel("noirme:hotspots", roomId);
+            await redisPub.hDel("norby:hotspots", roomId);
             await publishHotspotUpdate();
           } else {
             hotspot.requests = hotspot.requests.filter(
               (r) => r.user_id !== user_id,
             );
             await redisPub.hSet(
-              "noirme:hotspots",
+              "norby:hotspots",
               roomId,
               JSON.stringify(hotspot),
             );
             await publishHotspotUpdate();
 
             await redisPub.publish(
-              "noirme:chat_messages",
+              "norby:chat_messages",
               JSON.stringify({
                 roomId,
                 rosterUpdateOnly: true,
@@ -1358,7 +1358,7 @@ wss.on("connection", async (ws: any) => {
 
         if (useRedis && redisPub) {
           await redisPub.publish(
-            "noirme:direct_notifications",
+            "norby:direct_notifications",
             JSON.stringify({
               target_user_id,
               payload: {
@@ -1390,7 +1390,7 @@ wss.on("connection", async (ws: any) => {
         // Prevent duplicate pending chat requests (anti-spam)
         let existingRequest: ChatRequest | null = null;
         if (useRedis && redisPub) {
-          const raw = await redisPub.hGet("noirme:chat_requests", reqKey);
+          const raw = await redisPub.hGet("norby:chat_requests", reqKey);
           if (raw) existingRequest = JSON.parse(raw);
         } else {
           existingRequest = chatRequestsLocal.get(reqKey) || null;
@@ -1426,12 +1426,12 @@ wss.on("connection", async (ws: any) => {
 
         if (useRedis && redisPub) {
           await redisPub.hSet(
-            "noirme:chat_requests",
+            "norby:chat_requests",
             reqKey,
             JSON.stringify(newRequest),
           );
           await redisPub.publish(
-            "noirme:direct_notifications",
+            "norby:direct_notifications",
             JSON.stringify({
               target_user_id,
               payload: {
@@ -1463,7 +1463,7 @@ wss.on("connection", async (ws: any) => {
         let request: ChatRequest | null = null;
 
         if (useRedis && redisPub) {
-          const raw = await redisPub.hGet("noirme:chat_requests", reqKey);
+          const raw = await redisPub.hGet("norby:chat_requests", reqKey);
           if (raw) request = JSON.parse(raw);
         } else {
           request = chatRequestsLocal.get(reqKey) || null;
@@ -1480,12 +1480,12 @@ wss.on("connection", async (ws: any) => {
 
         if (useRedis && redisPub) {
           await redisPub.hSet(
-            "noirme:chat_requests",
+            "norby:chat_requests",
             reqKey,
             JSON.stringify(request),
           );
           await redisPub.publish(
-            "noirme:direct_notifications",
+            "norby:direct_notifications",
             JSON.stringify({
               target_user_id: sender_id,
               payload: {
@@ -1495,7 +1495,7 @@ wss.on("connection", async (ws: any) => {
             }),
           );
           await redisPub.publish(
-            "noirme:direct_notifications",
+            "norby:direct_notifications",
             JSON.stringify({
               target_user_id: responderInfo.user_id,
               payload: {
@@ -1541,8 +1541,8 @@ wss.on("connection", async (ws: any) => {
         let requestB: ChatRequest | null = null;
 
         if (useRedis && redisPub) {
-          const rawA = await redisPub.hGet("noirme:chat_requests", keyA);
-          const rawB = await redisPub.hGet("noirme:chat_requests", keyB);
+          const rawA = await redisPub.hGet("norby:chat_requests", keyA);
+          const rawB = await redisPub.hGet("norby:chat_requests", keyB);
           if (rawA) requestA = JSON.parse(rawA);
           if (rawB) requestB = JSON.parse(rawB);
         } else {
@@ -1588,14 +1588,14 @@ wss.on("connection", async (ws: any) => {
         });
 
         if (useRedis && redisPub) {
-          await redisPub.zAdd(`noirme:dm_history:${convoId}`, {
+          await redisPub.zAdd(`norby:dm_history:${convoId}`, {
             score: directMsg.timestamp,
             value: JSON.stringify(directMsg),
           });
-          await redisPub.expire(`noirme:dm_history:${convoId}`, 24 * 60 * 60);
+          await redisPub.expire(`norby:dm_history:${convoId}`, 24 * 60 * 60);
 
           await redisPub.publish(
-            "noirme:direct_notifications",
+            "norby:direct_notifications",
             JSON.stringify({
               target_user_id: recipient_id,
               payload: {
@@ -1633,7 +1633,7 @@ wss.on("connection", async (ws: any) => {
 
         if (useRedis && redisPub) {
           await redisPub.publish(
-            "noirme:direct_notifications",
+            "norby:direct_notifications",
             JSON.stringify({
               target_user_id: recipient_id,
               payload: {
@@ -1690,7 +1690,7 @@ wss.on("connection", async (ws: any) => {
         const { target_user_id } = data;
         if (useRedis && redisPub) {
           await redisPub.publish(
-            "noirme:direct_notifications",
+            "norby:direct_notifications",
             JSON.stringify({
               target_user_id,
               payload: data,
@@ -1738,15 +1738,15 @@ wss.on("connection", async (ws: any) => {
 
         if (useRedis && redisPub) {
           try {
-            const activeSocketId = await redisPub.get(`noirme:user_session:${info.user_id}`);
+            const activeSocketId = await redisPub.get(`norby:user_session:${info.user_id}`);
             // Delete session from Redis only if this socket is the one currently stored in Redis (no newer reconnection overtook it)
             // and no other local socket is active.
             if (!hasOtherLocal && (!activeSocketId || activeSocketId === ws.socketId)) {
-              await redisPub.hDel("noirme:active_users", info.user_id);
-              await redisPub.zRem("noirme:user_locations", info.user_id);
-              await redisPub.del(`noirme:user_session:${info.user_id}`);
+              await redisPub.hDel("norby:active_users", info.user_id);
+              await redisPub.zRem("norby:user_locations", info.user_id);
+              await redisPub.del(`norby:user_session:${info.user_id}`);
               await redisPub.publish(
-                "noirme:location_updates",
+                "norby:location_updates",
                 JSON.stringify({
                   type: "user_disconnected",
                   user_id: info.user_id,
@@ -1816,7 +1816,7 @@ async function initRedis() {
     useRedis = true;
     logEvent("redis_connected");
 
-    await redisSub.subscribe("noirme:location_updates", (message) => {
+    await redisSub.subscribe("norby:location_updates", (message) => {
       try {
         const payload = JSON.parse(message);
         if (payload.type === "location_update") {
@@ -1826,25 +1826,25 @@ async function initRedis() {
         }
       } catch (err: any) {
         logEvent("redis_subscriber_error", {
-          channel: "noirme:location_updates",
+          channel: "norby:location_updates",
           error: err.message,
         });
       }
     });
 
-    await redisSub.subscribe("noirme:hotspots_updates", (message) => {
+    await redisSub.subscribe("norby:hotspots_updates", (message) => {
       try {
         const payload = JSON.parse(message);
         broadcastLocal(payload);
       } catch (err: any) {
         logEvent("redis_subscriber_error", {
-          channel: "noirme:hotspots_updates",
+          channel: "norby:hotspots_updates",
           error: err.message,
         });
       }
     });
 
-    await redisSub.subscribe("noirme:chat_messages", (message) => {
+    await redisSub.subscribe("norby:chat_messages", (message) => {
       try {
         const payload = JSON.parse(message);
         if (payload.rosterUpdateOnly) {
@@ -1886,13 +1886,13 @@ async function initRedis() {
         }
       } catch (err: any) {
         logEvent("redis_subscriber_error", {
-          channel: "noirme:chat_messages",
+          channel: "norby:chat_messages",
           error: err.message,
         });
       }
     });
 
-    await redisSub.subscribe("noirme:direct_notifications", (message) => {
+    await redisSub.subscribe("norby:direct_notifications", (message) => {
       try {
         const { target_user_id, payload } = JSON.parse(message);
         const localSocket = findLocalSocketByUserId(target_user_id);
@@ -1905,7 +1905,7 @@ async function initRedis() {
         }
       } catch (err: any) {
         logEvent("redis_subscriber_error", {
-          channel: "noirme:direct_notifications",
+          channel: "norby:direct_notifications",
           error: err.message,
         });
       }
@@ -1915,12 +1915,12 @@ async function initRedis() {
     setInterval(async () => {
       try {
         if (!useRedis || !redisPub) return;
-        const allUserIds = await redisPub.zRange("noirme:user_locations", 0, -1);
+        const allUserIds = await redisPub.zRange("norby:user_locations", 0, -1);
         if (allUserIds && allUserIds.length > 0) {
           const now = Date.now();
           const pipeline = redisPub.multi();
           
-          const rawUsers = await redisPub.hmGet("noirme:active_users", allUserIds);
+          const rawUsers = await redisPub.hmGet("norby:active_users", allUserIds);
           
           allUserIds.forEach((uid, idx) => {
             const raw = rawUsers[idx];
@@ -1935,9 +1935,9 @@ async function initRedis() {
             }
             
             if (isZombie) {
-              pipeline.zRem("noirme:user_locations", uid);
-              pipeline.hDel("noirme:active_users", uid);
-              pipeline.del(`noirme:user_session:${uid}`);
+              pipeline.zRem("norby:user_locations", uid);
+              pipeline.hDel("norby:active_users", uid);
+              pipeline.del(`norby:user_session:${uid}`);
             }
           });
           

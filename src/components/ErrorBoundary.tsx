@@ -23,7 +23,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("[noirme] Uncaught error in ErrorBoundary:", error, errorInfo);
+    console.error("[norby] Uncaught error in ErrorBoundary:", error, errorInfo);
   }
 
   private handleReload = () => {

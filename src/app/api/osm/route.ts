@@ -74,7 +74,7 @@ export async function GET(request: Request) {
 
   const requestPromise = fetch(overpassUrl, {
     headers: {
-      "User-Agent": "noirme-app/1.0",
+      "User-Agent": "norby-app/1.0",
     },
   })
     .then(async (res) => {

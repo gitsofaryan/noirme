@@ -187,9 +187,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Even if not in profile, check local storage (fallback for sync)
       if (typeof window !== "undefined") {
         try {
-          const local = JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+          const local = JSON.parse(localStorage.getItem("norby_local_blocks") || "[]");
           const filtered = local.filter((id: string) => id !== targetUserId);
-          localStorage.setItem("noirme_local_blocks", JSON.stringify(filtered));
+          localStorage.setItem("norby_local_blocks", JSON.stringify(filtered));
           // Trigger a storage event for other tabs/components
           window.dispatchEvent(new Event("storage"));
         } catch (e) { }
@@ -202,9 +202,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Also clear from local storage if present
     if (typeof window !== "undefined") {
       try {
-        const local = JSON.parse(localStorage.getItem("noirme_local_blocks") || "[]");
+        const local = JSON.parse(localStorage.getItem("norby_local_blocks") || "[]");
         const filtered = local.filter((id: string) => id !== targetUserId);
-        localStorage.setItem("noirme_local_blocks", JSON.stringify(filtered));
+        localStorage.setItem("norby_local_blocks", JSON.stringify(filtered));
         window.dispatchEvent(new Event("storage"));
       } catch (e) { }
     }

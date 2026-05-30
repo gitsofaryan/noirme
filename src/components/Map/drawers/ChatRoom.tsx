@@ -35,7 +35,7 @@ export function ChatRoom({
 
   const handleCopySOS = () => {
     if (!userLocation) return;
-    const sosMsg = `🚨 [SOS Alert] I am meeting someone for Noirme hotspot "${hotspotTitle}". My current location is: https://maps.google.com/?q=${userLocation.lat},${userLocation.lng} (Coordinates: ${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)})`;
+    const sosMsg = `🚨 [SOS Alert] I am meeting someone for Norby hotspot "${hotspotTitle}". My current location is: https://maps.google.com/?q=${userLocation.lat},${userLocation.lng} (Coordinates: ${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)})`;
     navigator.clipboard.writeText(sosMsg);
     setCopiedCoords(true);
     setTimeout(() => setCopiedCoords(false), 2000);

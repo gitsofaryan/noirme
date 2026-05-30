@@ -59,10 +59,10 @@ export default function RootLayout({
               window.addEventListener('load', function() {
                 navigator.serviceWorker.register('/sw.js').then(
                   function(registration) {
-                    console.log('[noirme] ServiceWorker registered with scope:', registration.scope);
+                    console.log('[norby] ServiceWorker registered with scope:', registration.scope);
                   },
                   function(err) {
-                    console.error('[noirme] ServiceWorker registration failed:', err);
+                    console.error('[norby] ServiceWorker registration failed:', err);
                   }
                 );
               });

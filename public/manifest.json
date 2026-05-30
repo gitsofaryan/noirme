@@ -1,7 +1,7 @@
 {
-  "name": "Noirme",
-  "short_name": "Noirme",
-  "description": "Real-time social proximity app",
+  "name": "Norby",
+  "short_name": "Norby",
+  "description": "Norby - Real-time social proximity app",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

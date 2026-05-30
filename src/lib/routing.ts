@@ -15,7 +15,7 @@ export async function fetchOSRMRoute(
 ): Promise<RouteData> {
   const url = `https://router.project-osrm.org/route/v1/${mode}/${startLng},${startLat};${endLng},${endLat}?geometries=geojson&overview=full`;
 
-  console.log(`[noirme] OSRM API routing (${mode}) from ${startLat},${startLng} to ${endLat},${endLng}`);
+  console.log(`[norby] OSRM API routing (${mode}) from ${startLat},${startLng} to ${endLat},${endLng}`);
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`OSRM API error: ${res.status} ${res.statusText}`);
