@@ -73,7 +73,8 @@ Norby is built to be extremely fast and lightweight. New features must satisfy t
 
 Before submitting your PR for review:
 - [ ] Local verification passes with `npm run verify`.
-- [ ] For a faster TypeScript-only check, run `npm run typecheck`.
+
+> Tip: use `npm run typecheck` for a faster TypeScript-only check during development, but run the full `npm run verify` before submitting your PR.
 - [ ] No raw credentials or private keys are committed in configuration files.
 - [ ] JSDoc comments accompany new utility functions or hooks.
 - [ ] The PR description clearly explains the **What**, **Why**, and **How** of the change.

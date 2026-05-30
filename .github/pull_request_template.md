@@ -23,7 +23,9 @@ Select the type of change (check all that apply):
 
 Before submitting your PR, please verify:
 - [ ] Local verification passes with `npm run verify`.
-- [ ] If you only need a faster TypeScript check, `npm run typecheck` passes.
+
+> Tip: use `npm run typecheck` for a faster TypeScript-only check during development, but run the full `npm run verify` before submitting.
+
 - [ ] My changes adhere to the code style and guidelines in [CONTRIBUTING.md](../CONTRIBUTING.md).
 - [ ] I have added/updated JSDoc comments for any new functions, hooks, or components.
 - [ ] No raw credentials, access keys, or API tokens are checked in.
