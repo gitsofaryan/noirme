@@ -518,7 +518,7 @@ async function sendSync(ws: WebSocket) {
       await redisPub.set(
         `norby:user_session:${clientInfo.user_id}`,
         (ws as any).socketId || "default",
-        { EX: 120 },
+        { EX: 45 },
       );
 
       const maxRange = Math.max(10, Math.min(30, clientInfo.radarRange || 15));
@@ -541,7 +541,7 @@ async function sendSync(ws: WebSocket) {
           .filter(Boolean)
           .map((u: any) => JSON.parse(u))
           .filter((user) => {
-            const isAlive = now - (user.last_seen || 0) <= 120000;
+            const isAlive = now - (user.last_seen || 0) <= 45000;
             return isAlive;
           });
       }
@@ -909,7 +909,7 @@ wss.on("connection", async (ws: any) => {
           });
 
           await redisPub.set(`norby:user_session:${info.user_id}`, ws.socketId || "default", {
-            EX: 120,
+            EX: 45,
           });
 
           const nowBroadcast = Date.now();
@@ -1928,7 +1928,7 @@ async function initRedis() {
             if (raw) {
               try {
                 const u = JSON.parse(raw);
-                if (now - (u.last_seen || 0) <= 120000) {
+                if (now - (u.last_seen || 0) <= 45000) {
                   isZombie = false;
                 }
               } catch (e) {}
@@ -1946,7 +1946,7 @@ async function initRedis() {
       } catch (e: any) {
         logEvent("background_redis_cleanup_failed", { error: e.message });
       }
-    }, 60000);
+    }, 30000);
   } catch (err: any) {
     logEvent("redis_init_failed", { error: err.message });
     useRedis = false;
