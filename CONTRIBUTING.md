@@ -72,8 +72,8 @@ Norby is built to be extremely fast and lightweight. New features must satisfy t
 ## 🚀 Pull Request (PR) Checklist
 
 Before submitting your PR for review:
-- [ ] Code compiles perfectly with `npm run typecheck`.
-- [ ] Production build succeeds using `npm run build`.
+- [ ] Local verification passes with `npm run verify`.
+- [ ] For a faster TypeScript-only check, run `npm run typecheck`.
 - [ ] No raw credentials or private keys are committed in configuration files.
 - [ ] JSDoc comments accompany new utility functions or hooks.
 - [ ] The PR description clearly explains the **What**, **Why**, and **How** of the change.
