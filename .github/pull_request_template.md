@@ -22,8 +22,10 @@ Select the type of change (check all that apply):
 ## 🔍 Checklist
 
 Before submitting your PR, please verify:
-- [ ] My code compiles cleanly locally with `npx tsc --noEmit`.
-- [ ] The production build succeeds using `npm run build`.
+- [ ] Local verification passes with `npm run verify`.
+
+> Tip: use `npm run typecheck` for a faster TypeScript-only check during development, but run the full `npm run verify` before submitting.
+
 - [ ] My changes adhere to the code style and guidelines in [CONTRIBUTING.md](../CONTRIBUTING.md).
 - [ ] I have added/updated JSDoc comments for any new functions, hooks, or components.
 - [ ] No raw credentials, access keys, or API tokens are checked in.

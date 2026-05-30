@@ -40,8 +40,7 @@ When fixing a bug:
 3. **Preserve Caches & Storage Namespaces**: Ensure local storage and Redis namespaces (`norby:*`) are preserved unless changing the schema is specifically required.
 4. **Local Verification**: Verify the fix builds locally:
    ```bash
-   npx tsc --noEmit
-   npm run build
+   npm run verify
    ```
 
 ---
@@ -73,8 +72,9 @@ Norby is built to be extremely fast and lightweight. New features must satisfy t
 ## 🚀 Pull Request (PR) Checklist
 
 Before submitting your PR for review:
-- [ ] Code compiles perfectly with `npx tsc --noEmit`.
-- [ ] Production build succeeds using `npm run build`.
+- [ ] Local verification passes with `npm run verify`.
+
+> Tip: use `npm run typecheck` for a faster TypeScript-only check during development, but run the full `npm run verify` before submitting your PR.
 - [ ] No raw credentials or private keys are committed in configuration files.
 - [ ] JSDoc comments accompany new utility functions or hooks.
 - [ ] The PR description clearly explains the **What**, **Why**, and **How** of the change.

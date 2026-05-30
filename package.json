@@ -6,6 +6,8 @@
     "dev": "concurrently \"next dev --webpack\" \"npx tsx --watch src/server/socket-server.ts\"",
     "dev:ws": "npx tsx --watch src/server/socket-server.ts",
     "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run build",
     "start": "next start",
     "lint": "eslint"
   },
