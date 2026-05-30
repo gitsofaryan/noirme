@@ -6,9 +6,6 @@ const STATIC_ASSETS = [
   "/manifest.json",
   "/icon-192x192.png",
   "/icon-512x512.png",
-  "/file.svg",
-  "/globe.svg",
-  "/window.svg",
   "https://js.puter.com/v2/"
 ];
 

@@ -1,7 +1,7 @@
 {
   "name": "Norby",
   "short_name": "Norby",
-  "description": "Norby - Real-time social proximity app",
+  "description": "Alone and want to grab tea? ☕️ Drop a hotspot to connect with neighbours and meet up in real-time.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

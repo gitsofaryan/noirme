@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Norby",
-  description: "Real-time social proximity app",
+  description: "Alone and want to grab tea? ☕️ Drop a hotspot, broadcast your vibe, and connect with neighbors to meet up in real-time. Stop scrolling, start meeting.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
