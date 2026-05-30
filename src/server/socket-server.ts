@@ -646,19 +646,27 @@ function broadcastLocationUpdate(data: ClientInfo, senderWs?: WebSocket) {
         );
         if (iBlockedU || uBlockedMe) return;
 
-        if (recipientInfo.lat && recipientInfo.lng && data.lat && data.lng) {
-          const distance = getDistanceKm(
-            recipientInfo.lat,
-            recipientInfo.lng,
-            data.lat,
-            data.lng,
-          );
-          const maxRange = Math.max(
-            10,
-            Math.min(30, recipientInfo.radarRange || 15),
-          );
-          if (distance > maxRange) return;
+        // If recipient has no valid coordinates yet, don't leak other locations to them
+        if (
+          recipientInfo.lat === 0 ||
+          recipientInfo.lng === 0 ||
+          !recipientInfo.lat ||
+          !recipientInfo.lng
+        ) {
+          return;
         }
+
+        const distance = getDistanceKm(
+          recipientInfo.lat,
+          recipientInfo.lng,
+          data.lat,
+          data.lng,
+        );
+        const maxRange = Math.max(
+          10,
+          Math.min(30, recipientInfo.radarRange || 15),
+        );
+        if (distance > maxRange) return;
       }
       client.send(
         JSON.stringify({
@@ -1938,6 +1946,13 @@ async function initRedis() {
               pipeline.zRem("norby:user_locations", uid);
               pipeline.hDel("norby:active_users", uid);
               pipeline.del(`norby:user_session:${uid}`);
+              pipeline.publish(
+                "norby:location_updates",
+                JSON.stringify({
+                  type: "user_disconnected",
+                  user_id: uid,
+                }),
+              );
             }
           });
           
