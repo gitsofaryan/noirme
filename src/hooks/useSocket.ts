@@ -68,6 +68,7 @@ export function useSocket({
   const [offlineMessages, setOfflineMessagesState] = useState<any[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const offlineMessagesRef = useRef<any[]>([]);
+  const lastSentTimeRef = useRef<number>(0);
   const [connectionFailed, setConnectionFailed] = useState(false);
 
   // Store all callbacks in a ref to avoid closure issues during WebSocket reconnection cycles
@@ -149,6 +150,26 @@ export function useSocket({
     const ws = socketRef.current;
     const vals = latestValuesRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !vals.location) return;
+
+    const now = Date.now();
+    const lastSentLoc = lastSentLocationRef.current;
+    const timeSinceLastUpdate = now - (lastSentTimeRef.current || 0);
+    let movedSignificantly = true;
+    
+    if (lastSentLoc) {
+      // rough distance calculation (simplistic pythagorean on lat/lng)
+      const dLat = (vals.location.lat - lastSentLoc.lat) * 111000; // ~meters
+      const dLng = (vals.location.lng - lastSentLoc.lng) * 111000 * Math.cos(vals.location.lat * (Math.PI/180));
+      const distance = Math.sqrt(dLat*dLat + dLng*dLng);
+      movedSignificantly = distance > 5; // > 5 meters
+    }
+    
+    // Throttle unless moved > 5m or 10s elapsed
+    if (!forceFull && !profileDirtyRef.current && !movedSignificantly && timeSinceLastUpdate < 10000) {
+      return;
+    }
+    
+    lastSentTimeRef.current = now;
 
     // Send full payload only when profile data is dirty or forced
     if (profileDirtyRef.current || forceFull) {

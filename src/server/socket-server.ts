@@ -2,6 +2,36 @@ import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { createClient } from "redis";
 import { z } from "zod";
+import * as client from "prom-client";
+
+// ── Metrics Configuration ────────────────────────────────────────────────────
+client.collectDefaultMetrics({ prefix: 'norby_socket_' });
+
+const metricMessagesReceived = new client.Counter({
+  name: 'norby_socket_messages_received_total',
+  help: 'Total number of WebSocket messages received',
+  labelNames: ['type']
+});
+
+const metricMessagesSent = new client.Counter({
+  name: 'norby_socket_messages_sent_total',
+  help: 'Total number of WebSocket messages sent',
+  labelNames: ['type']
+});
+
+const metricSyncDuration = new client.Histogram({
+  name: 'norby_socket_sync_duration_seconds',
+  help: 'Time taken to execute full synchronization logic',
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2]
+});
+
+const metricRedisCommands = new client.Histogram({
+  name: 'norby_socket_redis_command_duration_seconds',
+  help: 'Time taken to execute Redis commands',
+  labelNames: ['command'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5]
+});
+
 
 // Global crash guards — never let the server process die
 process.on("uncaughtException", (err) => {
@@ -288,31 +318,25 @@ setInterval(async () => {
 
   if (useRedis && redisPub) {
     try {
-      // Hotspots cleanup
-      const allHotspots = await redisPub.hGetAll("norby:hotspots");
-      let changed = false;
-      for (const [id, raw] of Object.entries(allHotspots)) {
-        const hotspot: Hotspot = JSON.parse(raw);
-        if (hotspot.expires_at < now) {
-          await redisPub.hDel("norby:hotspots", id);
-          await redisPub.zRem("norby:hotspot_locations", id);
-          logEvent("hotspot_expired", { id });
-          changed = true;
-        }
-      }
-      if (changed) {
+      // Hotspots cleanup via ZSET sweep instead of hGetAll
+      const expiredTimer = metricRedisCommands.startTimer({ command: 'ZRANGEBYSCORE' });
+      const expiredIds = await redisPub.zRangeByScore("norby:hotspot_expirations", 0, now);
+      expiredTimer();
+      
+      if (expiredIds.length > 0) {
+        const pipeline = redisPub.multi();
+        expiredIds.forEach(id => {
+          pipeline.hDel("norby:hotspots", id);
+          pipeline.zRem("norby:hotspot_locations", id);
+          pipeline.zRem("norby:hotspot_expirations", id);
+        });
+        await pipeline.exec();
+        
+        expiredIds.forEach(id => logEvent("hotspot_expired", { id }));
         publishHotspotUpdate();
       }
-
-      // Chat requests cleanup
-      const allRequests = await redisPub.hGetAll("norby:chat_requests");
-      for (const [key, raw] of Object.entries(allRequests)) {
-        const req: ChatRequest = JSON.parse(raw);
-        if (req.timestamp < dayAgo) {
-          await redisPub.hDel("norby:chat_requests", key);
-          logEvent("redis_chat_request_expired", { key });
-        }
-      }
+      
+      // Chat requests cleanup is now handled lazily per-user in sendChatsSync!
     } catch (e: any) {
       logEvent("redis_cleanup_error", { error: e.message });
     }
@@ -376,6 +400,12 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.url === "/metrics") {
+    res.writeHead(200, { "Content-Type": client.register.contentType });
+    res.end(await client.register.metrics());
+    return;
+  }
+
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Norby WebSocket server is running.");
 });
@@ -388,6 +418,7 @@ function broadcastLocal(msg: object) {
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(payload);
+      metricMessagesSent.inc({ type: 'local_broadcast' });
     }
   });
 }
@@ -409,15 +440,15 @@ async function sendChatsSync(ws: WebSocket, userId: string) {
 
   if (useRedis && redisPub) {
     try {
-      const raw = await redisPub.hGetAll("norby:chat_requests");
-      for (const [key, rawVal] of Object.entries(raw)) {
-        const req: ChatRequest = JSON.parse(rawVal);
-        if (req.timestamp < dayAgo) {
-          await redisPub.hDel("norby:chat_requests", key);
-        } else {
-          allRequests.push(req);
-        }
-      }
+      const metricEnd = metricRedisCommands.startTimer({ command: 'ZREMRANGEBYSCORE' });
+      await redisPub.zRemRangeByScore(`norby:chat_reqs:${userId}`, 0, dayAgo);
+      metricEnd();
+      
+      const fetchEnd = metricRedisCommands.startTimer({ command: 'ZRANGE' });
+      const raw = await redisPub.zRange(`norby:chat_reqs:${userId}`, 0, -1);
+      fetchEnd();
+      
+      allRequests = raw.map(r => JSON.parse(r));
     } catch (e: any) {
       logEvent("redis_sync_chats_error", { error: e.message });
     }
@@ -426,23 +457,22 @@ async function sendChatsSync(ws: WebSocket, userId: string) {
     for (const [key, req] of chatRequestsLocal.entries()) {
       if (req.timestamp < dayAgo) {
         chatRequestsLocal.delete(key);
-      } else {
+      } else if (req.sender_id === userId || req.target_id === userId) {
         allRequests.push(req);
       }
     }
   }
 
-  // Filter requests involving the current user
-  const userRequests = allRequests.filter(
-    (r) => r.sender_id === userId || r.target_id === userId,
-  );
+  // Ensure uniqueness in case of overlapping records
+  const uniqueRequests = Array.from(new Map(allRequests.map(r => [`${r.sender_id}:${r.target_id}`, r])).values());
 
   ws.send(
     JSON.stringify({
       type: "chats_list",
-      requests: userRequests,
+      requests: uniqueRequests,
     }),
   );
+  metricMessagesSent.inc({ type: 'chats_list' });
 }
 
 async function triggerChatsSync(userId: string) {
@@ -507,8 +537,12 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
 }
 
 async function sendSync(ws: WebSocket) {
+  const endTimer = metricSyncDuration.startTimer();
   const clientInfo = clientsLocal.get(ws);
-  if (!clientInfo) return;
+  if (!clientInfo) {
+    endTimer();
+    return;
+  }
 
   let allUsers: ClientInfo[] = [];
   let allHotspots: Hotspot[] = [];
@@ -546,25 +580,37 @@ async function sendSync(ws: WebSocket) {
           });
       }
 
-      // Get all active hotspots (matching broadcast state to prevent blinking)
-      const allHotspotsRaw = await redisPub.hGetAll("norby:hotspots");
+      // Geo-spatial query for nearby hotspots
+      const nearbyHotspotIds = await redisPub.geoSearch(
+        "norby:hotspot_locations",
+        { latitude: clientInfo.lat, longitude: clientInfo.lng },
+        { radius: maxRange, unit: "km" },
+      );
+
       const validHotspots: Hotspot[] = [];
       const expiredHotspotIds: string[] = [];
 
-      for (const [rid, raw] of Object.entries(allHotspotsRaw)) {
-        try {
-          const h: Hotspot = JSON.parse(raw);
-          if (h.expires_at > Date.now()) {
-            validHotspots.push(h);
-          } else {
-            expiredHotspotIds.push(rid);
+      if (nearbyHotspotIds && nearbyHotspotIds.length > 0) {
+        const fetchTimer = metricRedisCommands.startTimer({ command: 'HMGET' });
+        const rawHotspots = await redisPub.hmGet("norby:hotspots", nearbyHotspotIds);
+        fetchTimer();
+        
+        rawHotspots.forEach((raw, i) => {
+          if (!raw) return;
+          try {
+            const h: Hotspot = JSON.parse(raw as string);
+            if (h.expires_at > Date.now()) {
+              validHotspots.push(h);
+            } else {
+              expiredHotspotIds.push(nearbyHotspotIds[i]);
+            }
+          } catch {
+            expiredHotspotIds.push(nearbyHotspotIds[i]);
           }
-        } catch {
-          expiredHotspotIds.push(rid);
-        }
+        });
       }
 
-      // Purge expired hotspots
+      // Purge expired hotspots lazily found during GEOSEARCH
       if (expiredHotspotIds.length > 0) {
         logEvent("redis_purge_expired_hotspots", {
           count: expiredHotspotIds.length,
@@ -573,6 +619,7 @@ async function sendSync(ws: WebSocket) {
         expiredHotspotIds.forEach((rid) => {
           purgePipeline.zRem("norby:hotspot_locations", rid);
           purgePipeline.hDel("norby:hotspots", rid);
+          purgePipeline.zRem("norby:hotspot_expirations", rid);
         });
         await purgePipeline.exec();
       }
@@ -732,6 +779,7 @@ wss.on("connection", async (ws: any) => {
       }
 
       const data = validation.data;
+      metricMessagesReceived.inc({ type: data.type });
 
       // Identity verification: Ensure client registers location first and verify matching user_id/sender_id
       const boundClient = clientsLocal.get(ws);
@@ -1009,6 +1057,11 @@ wss.on("connection", async (ws: any) => {
             longitude: newHotspot.lng,
             latitude: newHotspot.lat,
             member: roomId,
+          });
+          
+          await redisPub.zAdd("norby:hotspot_expirations", {
+            score: newHotspot.expires_at,
+            value: roomId,
           });
 
           await publishHotspotUpdate();
@@ -1398,8 +1451,9 @@ wss.on("connection", async (ws: any) => {
         // Prevent duplicate pending chat requests (anti-spam)
         let existingRequest: ChatRequest | null = null;
         if (useRedis && redisPub) {
-          const raw = await redisPub.hGet("norby:chat_requests", reqKey);
-          if (raw) existingRequest = JSON.parse(raw);
+          const raw = await redisPub.zRange(`norby:chat_reqs:${senderInfo.user_id}`, 0, -1);
+          const parsed = raw.map(r => JSON.parse(r) as ChatRequest);
+          existingRequest = parsed.find(r => `${r.sender_id}:${r.target_id}` === reqKey) || null;
         } else {
           existingRequest = chatRequestsLocal.get(reqKey) || null;
         }
@@ -1433,11 +1487,9 @@ wss.on("connection", async (ws: any) => {
         });
 
         if (useRedis && redisPub) {
-          await redisPub.hSet(
-            "norby:chat_requests",
-            reqKey,
-            JSON.stringify(newRequest),
-          );
+          const payload = JSON.stringify(newRequest);
+          await redisPub.zAdd(`norby:chat_reqs:${senderInfo.user_id}`, { score: newRequest.timestamp, value: payload });
+          await redisPub.zAdd(`norby:chat_reqs:${target_user_id}`, { score: newRequest.timestamp, value: payload });
           await redisPub.publish(
             "norby:direct_notifications",
             JSON.stringify({
@@ -1471,8 +1523,10 @@ wss.on("connection", async (ws: any) => {
         let request: ChatRequest | null = null;
 
         if (useRedis && redisPub) {
-          const raw = await redisPub.hGet("norby:chat_requests", reqKey);
-          if (raw) request = JSON.parse(raw);
+          // Since we changed to ZSET, we fetch all from responder and find the specific one
+          const raw = await redisPub.zRange(`norby:chat_reqs:${responderInfo.user_id}`, 0, -1);
+          const parsed = raw.map(r => JSON.parse(r) as ChatRequest);
+          request = parsed.find(r => `${r.sender_id}:${r.target_id}` === reqKey) || null;
         } else {
           request = chatRequestsLocal.get(reqKey) || null;
         }
@@ -1487,11 +1541,15 @@ wss.on("connection", async (ws: any) => {
         });
 
         if (useRedis && redisPub) {
-          await redisPub.hSet(
-            "norby:chat_requests",
-            reqKey,
-            JSON.stringify(request),
-          );
+          const payload = JSON.stringify(request);
+          
+          // Remove old versions from both sets before adding updated one to ensure score/value replaces old state
+          const oldPayload = JSON.stringify({ ...request, status: "pending" });
+          await redisPub.zRem(`norby:chat_reqs:${sender_id}`, oldPayload);
+          await redisPub.zRem(`norby:chat_reqs:${responderInfo.user_id}`, oldPayload);
+          
+          await redisPub.zAdd(`norby:chat_reqs:${sender_id}`, { score: request.timestamp, value: payload });
+          await redisPub.zAdd(`norby:chat_reqs:${responderInfo.user_id}`, { score: request.timestamp, value: payload });
           await redisPub.publish(
             "norby:direct_notifications",
             JSON.stringify({
@@ -1549,10 +1607,10 @@ wss.on("connection", async (ws: any) => {
         let requestB: ChatRequest | null = null;
 
         if (useRedis && redisPub) {
-          const rawA = await redisPub.hGet("norby:chat_requests", keyA);
-          const rawB = await redisPub.hGet("norby:chat_requests", keyB);
-          if (rawA) requestA = JSON.parse(rawA);
-          if (rawB) requestB = JSON.parse(rawB);
+          const rawA = await redisPub.zRange(`norby:chat_reqs:${senderInfo.user_id}`, 0, -1);
+          const parsedA = rawA.map(r => JSON.parse(r) as ChatRequest);
+          requestA = parsedA.find(r => `${r.sender_id}:${r.target_id}` === keyA) || null;
+          requestB = parsedA.find(r => `${r.sender_id}:${r.target_id}` === keyB) || null;
         } else {
           requestA = chatRequestsLocal.get(keyA) || null;
           requestB = chatRequestsLocal.get(keyB) || null;
@@ -1986,6 +2044,19 @@ setInterval(() => {
 // ── Graceful Shutdown Handler ────────────────────────────────────────────────
 const shutdown = async () => {
   logEvent("server_shutdown_triggered");
+
+  // Gracefully drain connections
+  const drainMessage = JSON.stringify({
+    type: "server_draining",
+    message: "Server is restarting, please reconnect",
+  });
+  
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(drainMessage);
+      client.close(1012, "Service Restart"); // 1012 is standard for "Service Restart"
+    }
+  });
 
   wss.close(() => {
     logEvent("ws_server_closed");

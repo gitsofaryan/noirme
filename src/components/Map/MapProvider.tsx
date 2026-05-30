@@ -596,12 +596,23 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     localBlocks,
     isBroadcastingAudio: webRTC.isBroadcastingAudio && webRTC.isSpaceHost,
     onSync: (msg) => {
+      performance.mark("sync-start");
       const userMap = new Map<string, any>();
       for (const u of msg.users) {
         if (u.user_id !== myUserId) userMap.set(u.user_id, u);
       }
       setActiveUsers(Array.from(userMap.values()));
       setIntents(msg.hotspots || []);
+      
+      requestAnimationFrame(() => {
+        performance.mark("sync-end");
+        performance.measure("norby_client_sync_render_duration", "sync-start", "sync-end");
+        const measures = performance.getEntriesByName("norby_client_sync_render_duration");
+        const last = measures[measures.length - 1];
+        if (last && last.duration > 16) {
+           console.warn(`[norby metrics] Slow render detected: ${last.duration.toFixed(2)}ms for ${msg.users.length} users`);
+        }
+      });
     },
     onLocationUpdate: (msg) => {
       if (msg.data.user_id !== myUserId) {
