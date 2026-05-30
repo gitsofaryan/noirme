@@ -163,7 +163,15 @@ Create a `.env.local` in the root:
 NEXT_PUBLIC_WS_URL=ws://localhost:3001
 ```
 
-### 2. Launch Dev Servers
+### 2. Verify Local Changes
+Before opening a pull request, run the same local verification commands referenced in the contributor guide:
+```bash
+npm run verify
+```
+
+This runs TypeScript checking followed by a production build so contributors can catch compile-time or Next.js build issues before review.
+
+### 3. Launch Dev Servers
 Start the Next.js app and the WebSocket server simultaneously:
 ```bash
 npm run dev
