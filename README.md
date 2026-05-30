@@ -171,3 +171,17 @@ npm run dev
 
 * **Frontend App**: [http://localhost:3000](http://localhost:3000)
 * **WebSocket Port**: `http://localhost:3001`
+
+---
+
+## 🤝 Contributing & Bounty Program
+
+We welcome contributions from the community! Whether you are fixing bugs, developing features, or updating documentation, we want your help to make Norby even better.
+
+> [!TIP]
+> ### 🎁 Get Rewarded for Your Work
+> **Meaningful contributions will be rewarded up to ₹250!**
+> Pull requests that provide high-value enhancements (such as bug fixes, performance improvements, doc clarity, or new features) are eligible for bounty payouts. Only clean, meaningful contributions will be counted.
+
+For details on coding guidelines, branch naming conventions, and checklist criteria, see our [Contributor Guide](CONTRIBUTING.md).
+

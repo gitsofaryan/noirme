@@ -4,6 +4,11 @@ We are thrilled that you want to contribute to **Norby**! To maintain a fast, se
 
 Please read this guide to understand our contribution process.
 
+> [!TIP]
+> ### 🎁 Bounty Rewards Program
+> **Meaningful contributions will be rewarded up to ₹250!**
+> High-quality, clean pull requests detailing bug fixes, new features, performance improvements, or documentation updates that get merged are eligible for rewards. Note: only meaningful and functional changes count.
+
 ---
 
 ## 🧭 Branch Naming Conventions
